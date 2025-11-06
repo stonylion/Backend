@@ -20,4 +20,4 @@ class History(models.Model):
 
     
     def __str__(self):
-        return f"{self.story.title} | {self.viewed_time} 열람"
+        return f"{self.story.title} | {self.viewed_time: %Y-%m-%d %H:%M} 열람"
