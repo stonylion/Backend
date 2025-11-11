@@ -31,6 +31,7 @@ django-redis==6.0.0
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
 docopt==0.6.2
+dtw-python==1.7.2
 eng_to_ipa==0.0.2
 fastapi==0.121.0
 faster-whisper==1.0.3
@@ -84,6 +85,7 @@ MarkupSafe==2.1.5
 mdurl==0.1.2
 mecab-python3==1.0.9
 melotts @ git+https://github.com/myshell-ai/MeloTTS.git@209145371cff8fc3bd60d7be902ea69cbdb7965a
+more-itertools==10.8.0
 mpmath==1.3.0
 msgpack==1.1.2
 MyShell-OpenVoice @ git+https://github.com/myshell-ai/OpenVoice.git@74a1d147b17a8c3092dd5430504bd83ef6c7eb23
@@ -93,6 +95,7 @@ num2words==0.5.12
 numba==0.62.1
 numpy==1.26.4
 onnxruntime==1.23.2
+openai-whisper==20250625
 orjson==3.11.4
 packaging==25.0
 pandas==2.3.3
@@ -141,6 +144,7 @@ sympy==1.14.0
 tensorboard==2.16.2
 tensorboard-data-server==0.7.2
 threadpoolctl==3.6.0
+tiktoken==0.12.0
 tokenizers==0.13.3
 tomlkit==0.13.3
 torch==2.9.0
@@ -161,4 +165,5 @@ uvicorn==0.38.0
 wasabi==0.10.1
 websockets==15.0.1
 Werkzeug==3.1.3
+whisper-timestamped==1.14.2
 wrapt==2.0.0
