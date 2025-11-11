@@ -1,16 +1,19 @@
-"""
-ASGI config for stonylion project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/
-"""
-
 import os
+import django
+from channels.routing import get_default_application
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
+import story.routing
 
-from django.core.asgi import get_asgi_application
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'project_root.settings')
+django.setup()
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'stonylion.settings')
+application = ProtocolTypeRouter({
+    "http": get_default_application(),
+    "websocket": AuthMiddlewareStack(
+        URLRouter(
+            story.routing.websocket_urlpatterns
+        )
+    ),
+})
 
-application = get_asgi_application()

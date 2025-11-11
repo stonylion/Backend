@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     'AI',
     'mylibrary',
     'story',
+    "channels",
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 MIDDLEWARE = [
@@ -71,6 +73,18 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'stonylion.wsgi.application'
+ASGI_APPLICATION = "project_root.asgi.application"
+
+# Redis
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/0",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
 
 
 # Database

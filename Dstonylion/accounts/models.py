@@ -25,6 +25,9 @@ class Voice(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="voices")
     name = models.CharField(max_length=100)
     voice_file = models.FileField(upload_to='voices/')
+    profile_image = models.ImageField(upload_to='voices/profiles/', null=True, blank=True)
+    language = models.CharField(max_length=10, default="ko")   
+    created_at = models.DateTimeField(auto_now_add=True)     
 
     def __str__(self):
-        return self.name
+        return f"{self.user.username} - {self.name}"
