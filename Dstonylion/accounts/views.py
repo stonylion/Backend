@@ -14,6 +14,7 @@ def get_tokens(user):
     access = str(token.access_token)
     return{
         "access_token": access,
+        "refresh": refresh
     }
 
 class SignupView(views.APIView):
@@ -43,5 +44,5 @@ class LoginView(views.APIView):
                 {"message":"로그인 성공", "user":UserSerializer(user).data, "token":tokens},
                 status=status.HTTP_200_OK)
         return Response(
-            {"message":"로그인 실패"},
-            serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            {"message":"로그인 실패", "errors":serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST)

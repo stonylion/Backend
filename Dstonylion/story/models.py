@@ -11,6 +11,12 @@ class Theme(models.Model):
         return self.name
     
 class Story(models.Model):
+    CATEGORY_CHOICES = [
+        ("classic", "명작동화"),
+        ("custom", "제작동화"),
+        ("extended", "확장동화"),
+    ]
+    
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stories")
     child = models.ForeignKey(Child, on_delete=models.CASCADE, blank=True, related_name="stories")
     voice = models.ForeignKey(Voice, on_delete=models.CASCADE, blank=True, related_name="stories")
@@ -23,6 +29,7 @@ class Story(models.Model):
     age_group = models.CharField(max_length=50, null=True, blank=True)
     moral = models.CharField(max_length=50, null=True, blank=True)
     status = models.CharField(max_length=50, null=True, blank=True)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="classic")
 
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(default=timezone.now, db_index=True)
