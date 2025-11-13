@@ -1,6 +1,23 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,django,python,windows
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,django,python,windows
 
+# voice cloning, tts
+
+outputs_v2/
+MeloTTS/
+OpenVoice/
+
+# OpenVoice / MeloTTS checkpoint files
+*.pth
+*.wav
+
+# media files
+media/
+reference_audio/
+tts_outputs/
+
+
+
 # Python 가상환경
 myvenv/
 newvenv/
