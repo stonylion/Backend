@@ -17,14 +17,21 @@ class Child(models.Model):
     birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, null=True, blank=True)
     profile_image = models.ImageField(upload_to='children/', null=True, blank=True)
+    is_active = models.BooleanField(null=True, default=False)
 
     def __str__(self):
         return self.name
     
-class Voice(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="voices")
-    name = models.CharField(max_length=100)
-    voice_file = models.FileField(upload_to='voices/')
+class ClonedVoice(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cloned_voices")
+    voice_name = models.CharField(max_length=255)
+    reference_audio_url = models.URLField(null=True, blank=True)
+    voice_profile_image = models.URLField(null=True, blank=True)
+    se_file = models.FileField(upload_to="cloned_se/", null=True, blank=True)  # 사용자의 음색 벡터 파일
+    cloned_voice_file = models.FileField(upload_to="tts_outputs/", null=True, blank=True)  # 변환된 클로닝 음성
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.name
+        return f"{self.user.username}의 클로닝된 음성"
+    
+

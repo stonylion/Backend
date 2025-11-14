@@ -10,6 +10,6 @@ admin.site.register(Child)
 class ChildAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "user", "birth", "gender")
 
-admin.site.register(Voice)
+admin.site.register(ClonedVoice)
 class VoiceAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "user", "voice_file")
+    list_display = ("id", "voice_name", "user", "voice_file")
