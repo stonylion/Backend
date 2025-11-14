@@ -1,7 +1,6 @@
 from django.urls import path
-from . import views
+from .views import GenerateIllustrationsView
 
 urlpatterns = [
-    # 예시 (나중에 실제 view 연결)
-    # path("example/", views.ExampleView.as_view(), name="example"),
+    path("illustration/generate/", GenerateIllustrationsView.as_view()),
 ]

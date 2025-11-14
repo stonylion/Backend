@@ -37,11 +37,13 @@ SECRET_KEY = 'django-insecure-jd)-tbus3q3(2rhg-kw8!co97d&(f4cmafgdxz!c*17k85+)cp
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'storages',
     'storages',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -49,6 +51,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework_simplejwt',
     'rest_framework',
     'rest_framework_simplejwt',
     'accounts',
@@ -191,6 +195,10 @@ DEFAULT_FILE_STORAGE = "stonylion.storages.MediaStorage"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+from django.core.files.storage import storages
+from stonylion.storages import MediaStorage
+
+storages._storages["default"] = MediaStorage()
 from django.core.files.storage import storages
 from stonylion.storages import MediaStorage
 
