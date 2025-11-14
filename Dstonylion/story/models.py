@@ -12,7 +12,7 @@ class MoralTheme(models.Model):
         return self.name
     
 class Story(models.Model):
-    CATEGORY_CHOICES = [ 
+    CATEGORY_CHOICES = [
         ("classic", "명작동화"),
         ("custom", "제작동화"),
         ("extended", "확장동화"),

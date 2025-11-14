@@ -28,6 +28,7 @@ def get_tokens(user):
     access = str(token.access_token)
     return{
         "access_token": access,
+        "refresh": refresh
     }
 
 class SignupView(views.APIView):
