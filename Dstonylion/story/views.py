@@ -375,7 +375,7 @@ class StoryGenerateView(APIView):
             custom_theme, _ = MoralTheme.objects.get_or_create(name=kw, defaults={"key": f"custom_{kw}"})
             story.morals.add(custom_theme)
 
-        pages = split_into_pages(ai_text)
+        pages = split_into_pages(body)
 
         for id, page_text in enumerate(pages, start=1):
             StoryPage.objects.create(
@@ -403,8 +403,16 @@ class StoryGenerateView(APIView):
 
 class StoryListView(APIView):
     def get(self, request):
-        stories = Story.objects.all().order_by("-created_at")
+        category = request.query_params.get("category")
+        stories = Story.objects.all()
+
+        if category in ["classic", "custom", "extended"]:
+            stories = stories.filter(category=category)
+        
+        stories = stories.order_by("-created_at")
+        
         serializer = StoryInfoSerializer(stories, many=True)
+
         return Response(serializer.data, status=200)
     
 class StoryDetailView(APIView):
@@ -433,6 +441,16 @@ class StoryPageListView(APIView):
 
         pages = StoryPage.objects.filter(story=story).order_by("page_number")
         serializer = StoryPageSerializer(pages, many=True)
+        return Response(serializer.data, status=200)
+
+class StoryScriptView(APIView):
+    def get(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+        
+        pages = StoryPage.objects.filter(story=story).order_by("page_number")
+        serializer = StoryScriptSerializer(pages, many=True)
         return Response(serializer.data, status=200)
 
 '''
