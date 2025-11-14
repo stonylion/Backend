@@ -4,38 +4,41 @@ from accounts.models import *
 from django.utils import timezone
 
 # Create your models here.
-class Theme(models.Model):
+class MoralTheme(models.Model):
+    key = models.CharField(max_length=50, unique=True, null=True, blank=True)
     name = models.CharField(max_length=100)
 
     def __str__(self):
         return self.name
     
 class Story(models.Model):
+    CATEGORY_CHOICES = [ 
+        ("classic", "명작동화"),
+        ("custom", "제작동화"),
+        ("extended", "확장동화"),
+    ]
+    
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stories")
-    child = models.ForeignKey(Child, on_delete=models.CASCADE, blank=True, related_name="stories")
-    voice = models.ForeignKey(ClonedVoice, on_delete=models.CASCADE, blank=True, related_name="stories")
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, blank=True, null=True, related_name="stories")
+    voice = models.ForeignKey(ClonedVoice, on_delete=models.CASCADE, blank=True, null=True, related_name="stories")
 
     title = models.CharField(max_length=200)
+    author = models.CharField(max_length=50)
     cover = models.ImageField(upload_to='stories/', null=True)
     content = models.TextField()
+
     page_count = models.IntegerField(default=0)
     runtime = models.CharField(max_length=50, null=True, blank=True)
     age_group = models.CharField(max_length=50, null=True, blank=True)
-    moral = models.CharField(max_length=50, null=True, blank=True)
-    status = models.CharField(max_length=50, null=True, blank=True)
+    category = models.CharField (max_length=20, choices=CATEGORY_CHOICES, default="classic")
+
+    morals = models.ManyToManyField(MoralTheme, related_name="stories", blank=True)
 
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(default=timezone.now, db_index=True)
-    released_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.title
-
-class StoryTheme(models.Model):
-    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="themes")
-    theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name="themes")
-
-    class Meta:
-        unique_together = ('story', 'theme')
 
 class StoryPage(models.Model):
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="pages")
@@ -55,12 +58,30 @@ class Illustrations(models.Model):
 
     def __str__(self):
         return f"{self.story_page.story.title}(p.{self.story_page.page_number}) 삽화"
-    
-class Extension(models.Model):
+
+class StoryLike(models.Model):
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="likes")
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name="likes")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("story", "child")
+
+class StoryView(models.Model):
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="views")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="views")
+    last_viewed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("story", "user")
+
+class StoryExtension(models.Model):
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="extensions")
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name="extensions")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="extensions")
     extended_content = models.TextField()
-    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    dialogue_history = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.story.title}의 확장"
+        return f"{self.child.name}의 {self.story.title}"
