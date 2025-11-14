@@ -1,91 +1,144 @@
-import json
-import base64
-import torch
-import tempfile
-from faster_whisper import WhisperModel
+import json, os, re
+import redis
 from channels.generic.websocket import AsyncWebsocketConsumer
-from asgiref.sync import sync_to_async
+from channels.db import database_sync_to_async
+from django.contrib.auth import get_user_model
+from django.conf import settings
+from dotenv import load_dotenv
+import aiofiles
+import tempfile
+import openai
+import asyncio
+from rest_framework_simplejwt.tokens import AccessToken
 
-# Whisper 모델 로드 (서버 시작 시 1회 로드)
-model = WhisperModel("base", device="cpu")
+load_dotenv(settings.BASE_DIR/ ".env")
+openai.api_key = os.getenv("OPENAI_API_KEY")
+User = get_user_model()
 
-class AudioTranscriptionConsumer(AsyncWebsocketConsumer):
-    async def connect(self):
-        await self.accept()
-        self.sequence_counter = 0
-        print("🟢 WebSocket connected")
-
-    async def disconnect(self, close_code):
-        print("🔴 WebSocket disconnected")
-
-    async def receive(self, text_data):
+class DraftConsumer(AsyncWebsocketConsumer):
+    
+    @database_sync_to_async
+    def get_user_from_token(self, user_id):
         try:
-            data = json.loads(text_data)
-            event = data.get("event")
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None
 
-            if event == "audio_chunk":
-                await self.handle_audio_chunk(data)
+    async def connect(self):
+        try:
+            headers = dict(self.scope['headers'])
+            auth_header = headers.get(b'authorization')
 
-            elif event == "stop":
-                await self.handle_stop()
+            if not auth_header:
+                await self.close(code=4001)
+                return
 
-            else:
-                await self.send(json.dumps({
-                    "event": "error",
-                    "message": "Invalid event type"
-                }))
+            token_str = auth_header.decode().split(" ")[1]
+
+            token = AccessToken(token_str)
+            user_id = token["user_id"]
+
+            self.scope["user"] = await self.get_user_from_token(user_id)
+
+            if not self.scope["user"]:
+                await self.close(code=4002)
+                return
+
         except Exception as e:
-            await self.send(json.dumps({
-                "event": "error",
-                "message": str(e)
-            }))
-
-    async def handle_audio_chunk(self, data):
-        """
-        Client → Server: audio_chunk 이벤트
-        base64 인코딩된 오디오를 Whisper로 변환
-        """
-        audio_base64 = data.get("data")
-        sequence = data.get("sequence", 0)
-
-        if not audio_base64:
-            await self.send(json.dumps({
-                "event": "error",
-                "message": "Missing audio data"
-            }))
+            print("WebSocket JWT Auth Error:", e)
+            await self.close(code=4003)
+            return
+        
+        self.user = self.scope["user"]
+        if not self.user.is_authenticated:
+            await self.close()
             return
 
-        try:
-            # base64 → wav 파일
-            audio_bytes = base64.b64decode(audio_base64)
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(audio_bytes)
-                tmp.flush()
+        self.redis = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
+        )
+        self.redis_key = f"story_draft:{self.user.id}"
 
-                # 변환 수행 (비동기)
-                segments, info = model.transcribe(tmp.name, language="ko")
+        self.paused = False
+        await self.accept()
+        await self.send(json.dumps({"message": "STT 연결 완료"}))
 
-                transcript = " ".join([segment.text.strip() for segment in segments])
+    async def receive(self, bytes_data=None, text_data=None):
+        if text_data:
+            data = json.loads(text_data)
+            cmd = data.get("command")
 
-            await self.send(json.dumps({
-                "event": "partial_transcript",
-                "text": transcript,
-                "sequence": sequence
-            }))
+            if cmd == "pause":
+                self.paused = True
+                await self.send(json.dumps({"status": "일시정지"}))
+                return
 
-        except Exception as e:
-            await self.send(json.dumps({
-                "event": "error",
-                "message": f"Failed to process audio: {str(e)}"
-            }))
+            elif cmd == "resume":
+                self.paused = False
+                await self.send(json.dumps({"status": "이어말하기"}))
+                return
 
-    async def handle_stop(self):
-        """
-        Client → Server: stop 이벤트
-        최종 결과 전송 후 연결 종료
-        """
-        await self.send(json.dumps({
-            "event": "final_transcript",
-            "text": "옛날 옛적에 여우와 두루미가 살았어요."
-        }))
-        await self.close()
+            elif cmd == "stop":
+                await self.send(json.dumps({"status": "녹음완료"}))
+                await self.close()
+                return
+
+        if bytes_data and not self.paused:
+            # Whisper는 파일 단위이므로, 수신된 bytes를 임시 파일로 저장
+            async with aiofiles.tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+                await temp_audio.write(bytes_data)
+                temp_path = temp_audio.name
+
+            try:
+                loop = asyncio.get_event_loop()
+                text = await loop.run_in_executor(None, self.transcribe_audio, temp_path)
+
+                clean_text = self._normalize_text(text)
+
+                if clean_text:
+                    existing = self.redis.get(self.redis_key) or ""
+                    new_text = self._merge_sentences(existing, clean_text)
+                    self.redis.set(self.redis_key, new_text)
+
+                    await self.send(json.dumps({
+                        "type": "transcription",
+                        "text": clean_text.strip()
+                    }))
+
+            except Exception as e:
+                await self.send(json.dumps({"error": f"STT 오류: {str(e)}"}))
+            finally:
+                try:
+                    os.remove(temp_path)
+                except FileNotFoundError:
+                    pass
+
+    def transcribe_audio(self, filepath):
+        with open(filepath, "rb") as f:
+            result = openai.Audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                language="ko"
+            )
+        return result.text.strip()
+
+    def _normalize_text(self, text: str) -> str:
+        text = re.sub(r"\s+", " ", text)
+        if not re.search(r"[.!?]$", text):
+            text += "."
+        return text.strip()
+
+    def _merge_sentences(self, existing: str, new_text: str) -> str:
+        existing = existing.strip()
+        new_text = new_text.strip()
+
+        if existing and not existing.endswith((".", "?", "!")):
+            existing += "."
+
+        return (existing + " " + new_text).strip()
+
+    async def disconnect(self, close_code):
+        await self.send(json.dumps({"message": "STT 연결 종료"}))

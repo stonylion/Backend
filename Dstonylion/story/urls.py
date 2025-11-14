@@ -1,15 +1,19 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
 from .views import *
 
-router = DefaultRouter()
-router.register(r'api/story/draft', StoryDraftViewSet, basename='story-draft')
-
 urlpatterns = [
-    path('story/option/', StoryOptionView.as_view(), name='story-option'),
-    path('story/keywords/', StoryKeywordSaveView.as_view(), name='story-keyword-save'),
-    path('story/style/', StoryStyleSelectView.as_view(), name='story-style-select'),
-    path('illustration/regenerate/', IllustrationRegenerateView.as_view(), name='illustration-regenerate'),
-    path("user/voice/tts/", ClonedVoiceTTSView.as_view(), name="cloned-voice-tts"),
-    path('', include(router.urls)),
+    path('options/', StoryOptionSaveView.as_view()),
+    path('draft/', StoryDraftView.as_view()),
+    path('morals/', MoralThemeListView.as_view()),
+    path('story-morals/', StoryMoralSaveView.as_view()),
+    #path('api/illustration/regenerate/', IllustrationRegenerateView.as_view(), name='illustration-regenerate'),
+    #path('generate/illustrations/', StoryJsonImportView.as_view()),
+    path('generate/', StoryGenerateView.as_view()),
+
+    path('classic/upload/', ClassicStoryUploadView.as_view()),
+
+    path('', StoryListView.as_view()),
+    path('<int:story_id>/', StoryDetailView.as_view()),
+    path('<int:story_id>/pages/', StoryPageListView.as_view()),
+    path('<int:story_id>/script/', StoryScriptView.as_view())
 ]

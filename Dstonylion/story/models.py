@@ -12,7 +12,7 @@ class MoralTheme(models.Model):
         return self.name
     
 class Story(models.Model):
-    CATEGORY_CHOICES = [
+    CATEGORY_CHOICES = [ 
         ("classic", "명작동화"),
         ("custom", "제작동화"),
         ("extended", "확장동화"),
@@ -20,7 +20,7 @@ class Story(models.Model):
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stories")
     child = models.ForeignKey(Child, on_delete=models.CASCADE, blank=True, null=True, related_name="stories")
-    voice = models.ForeignKey(ClonedVoice, on_delete=models.CASCADE, blank=True, null=True, related_name="stories")
+    voice = models.ForeignKey(Voice, on_delete=models.CASCADE, blank=True, null=True, related_name="stories")
 
     title = models.CharField(max_length=200)
     author = models.CharField(max_length=50)

@@ -1,191 +1,177 @@
-import redis
-import random
-import torch
-import traceback
+import redis, random, os, json, openai, re
 from django.conf import settings
-from django.core.files import File
-from django.core.files.storage import default_storage
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
-from accounts.models import ClonedVoice
-import os
+from .models import *
+from .serializers import *
+from mylibrary.models import *
+from django.core.files.storage import default_storage
+from rest_framework import viewsets, status
+from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
+from story.utils import split_into_pages
 
-from melo.api import TTS
-from story.services.openvoice_service import generate_tts
-from story.services.openvoice_service import tone_color_converter
+User = get_user_model()
 
-
-from .models import Story, StoryPage, Illustrations
-
-from .serializers import StoryDraftSerializer
-
-
-class StoryOptionView(APIView):
-    """
-    사용자가 동화 분량(length)과 연령대(age_range)를 선택하면
-    다음 단계 URL을 반환하는 API.
-    """
-
+#분량, 연령대 선택
+class StoryOptionSaveView(APIView):
     def post(self, request):
-        length = request.data.get("length")
-        age_range = request.data.get("age_range")
+        runtime = request.data.get("runtime")
+        age_group = request.data.get("age_group")
 
-        # 필수 옵션 누락 체크
-        if not length or not age_range:
+        valid_runtime = ["0-3분", "3-7분", "7-10분"]
+        valid_age = ["0-3세", "4-6세", "7-12세"]
+
+        if not runtime or not age_group:
             return Response(
-                {"error": "필수 옵션이 누락되었습니다. length와 age_range를 모두 선택해주세요."},
+                {"error": "필수 옵션이 누락되었습니다. runtime와 age_group를 모두 선택해주세요."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 유효하지 않은 값 처리 (예시: 사전에 정의된 옵션만 허용)
-        valid_lengths = ["0-3분", "3-5분", "5-10분"]
-        valid_ages = ["0-3세", "4-6세", "7-9세"]
-
-        if length not in valid_lengths or age_range not in valid_ages:
+        if runtime not in valid_runtime or age_group not in valid_age:
             return Response(
-                {"error": "잘못된 동화 옵션입니다. length 또는 age_range를 확인해주세요."},
+                {"error": "잘못된 동화 옵션입니다."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 정상 응답
-        return Response(
-            {"next": "/story/record/"},
-            status=status.HTTP_200_OK
+        redis_client = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
         )
+        redis_client.hmset(f"story_option:{request.user.id}", {"runtime": runtime, "age_group": age_group})
+
+        return Response({"next": "/story/record/"}, status=status.HTTP_200_OK)
     
-
-class StoryDraftViewSet(viewsets.ViewSet):
-    """
-    Whisper STT 결과 임시 저장 및 복원 API
-    - GET: Redis에서 STT 결과 복원
-    - POST: WebSocket에서 받은 STT 결과를 Redis에 저장
-    """
-
+class StoryDraftView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _get_redis_client(self):
+    def _redis(self):
         return redis.StrictRedis(
             host=getattr(settings, "REDIS_HOST", "localhost"),
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
-            charset="utf-8",
-            decode_responses=True,
+            decode_responses=True
         )
-
-    def get_cache_key(self, user_id):
-        return f"story_draft:{user_id}"
-
-    # GET /api/story/draft/ (복원)
-    def list(self, request):
-        redis_client = self._get_redis_client()
-        user_id = request.user.id
-        redis_key = self.get_cache_key(user_id)
-
-        draft_text = redis_client.get(redis_key)
-
-        if not draft_text:
-            return Response(
-                {"error": "복원할 임시 텍스트가 없습니다."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        serializer = StoryDraftSerializer({"draft_text": draft_text})
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    # POST /api/story/draft/ (저장)
-    def create(self, request):
-        serializer = StoryDraftSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        draft_text = serializer.validated_data.get("draft_text")
-        user_id = request.user.id
-        redis_client = self._get_redis_client()
-        redis_key = self.get_cache_key(user_id)
-
-        redis_client.set(redis_key, draft_text)
-
-        return Response({"message": "임시 텍스트가 저장되었습니다."}, status=status.HTTP_200_OK)
     
-    # DELETE /api/story/draft/ (초기화)
-    def destroy(self, request, pk=None):
-        """
-        새 이야기 녹음 시작 시 Redis 캐시 초기화
-        """
-        try:
-            redis_client = self._get_redis_client()
-            user_id = request.user.id
-            redis_key = self.get_cache_key(user_id)
+    def _normalize_text(self, text: str) -> str:
+        text = re.sub(r"\s+", " ", text)
+        text = text.strip()
+        if not text:
+            return ""
+        if not text.endswith((".", "?", "!")):
+            text += "."
+        return text.strip()
 
-            if not redis_client.exists(redis_key):
-                return Response(
-                    {"error": "삭제할 캐시가 없습니다."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+    def get(self, request):
+        redis_client = self._redis()
+        text = redis_client.get(f"story_draft:{request.user.id}") or ""
+        return Response({"draft_text": text}, status=200)
 
-            redis_client.delete(redis_key)
-            return Response(status=status.HTTP_200_OK)
+    def post(self, request):
+        redis_client = self._redis()
+        draft_key = f"story_draft:{request.user.id}"
+        draft_text = request.data.get("draft_text", "")
+        mode = request.data.get("mode")
 
-        except Exception as e:
-            return Response(
-                {"error": f"서버 오류: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-class StoryKeywordSaveView(APIView):
-    """
-    사용자가 선택하거나 직접 입력한 교훈 키워드를 저장하는 API
-    (추천 기능은 추후 추가 예정)
-    """
+        if draft_text:
+            draft_text = self._normalize_text(draft_text)
 
+        if mode is None:
+            redis_client.set(draft_key, draft_text)
+            return Response({"message": "Draft 저장 완료"}, status=200)
+
+        elif mode == "switch_to_text":
+            # WebSocket에 'pause' 명령 전송은 프론트가 수행
+            current_draft = redis_client.get(draft_key) or ""
+            return Response({
+                "message": "음성 입력이 일시정지되었습니다. 텍스트 모드로 전환합니다.",
+                "draft_text": current_draft
+            }, status=200)
+
+        elif mode == "switch_to_voice":
+            redis_client.set(draft_key, draft_text)
+            # 프론트가 이 응답을 받으면 WebSocket을 재연결하여 resume
+            return Response({
+                "message": "텍스트가 저장되었습니다. 이어서 말하기로 전환합니다.",
+                "next_ws": "story/draft-stt/"
+            }, status=200)
+
+        else:
+            return Response({"error": "유효하지 않은 mode입니다."}, status=400)
+
+DEFAULT_MORALS = [
+    {"key": "family", "name": "가족"},
+    {"key": "gratitude", "name": "감사"},
+    {"key": "empathy", "name": "공감"},
+    {"key": "sharing", "name": "나눔"},
+    {"key": "effort", "name": "노력"},
+    {"key": "diversity", "name": "다양성"},
+    {"key": "love", "name": "사랑"},
+    {"key": "life", "name": "생명"},
+    {"key": "trust", "name": "신뢰"},
+    {"key": "courage", "name": "용기"},
+    {"key": "friendship", "name": "우정"},
+    {"key": "honesty", "name": "정직"},
+    {"key": "respect", "name": "존중"},
+    {"key": "temperance", "name": "절제"},
+    {"key": "responsibility", "name": "책임감"},
+    {"key": "hope", "name": "희망"},
+]
+
+def ensure_default_morals():
+    for moral in DEFAULT_MORALS:
+        MoralTheme.objects.get_or_create(key=moral["key"], defaults={"name": moral["name"]})
+
+class MoralThemeListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _get_redis_client(self):
-        return redis.StrictRedis(
+    def get(self, request):
+        ensure_default_morals()
+        morals = MoralTheme.objects.all().order_by("id")
+        serializer = MoralThemeSerializer(morals, many=True)
+        return Response(serializer.data, status=200)
+
+#교훈 키워드 선택 혹은 추가
+class StoryMoralSaveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        selected_ids = request.data.get("selected_morals", [])
+        custom_morals = request.data.get("custom_morals", [])
+
+        if not isinstance(selected_ids, list) or not isinstance(custom_morals, list):
+            return Response({"error": "selected_ids와 custom_keywords는 리스트 형태여야 합니다."}, status=400)
+
+        total_count = len(selected_ids) + len(custom_morals)
+        if total_count == 0:
+            return Response({"error": "최소 1개의 교훈을 선택해주세요."}, status=400)
+        if total_count > 3:
+            return Response({"error": "최대 3개의 교훈만 선택할 수 있습니다."}, status=400)
+
+        # Redis 저장
+        redis_client = redis.StrictRedis(
             host=getattr(settings, "REDIS_HOST", "localhost"),
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
-            charset="utf-8",
             decode_responses=True,
         )
-
-    def post(self, request):
-        selected_keywords = request.data.get("selected_keywords", [])
-        custom_keywords = request.data.get("custom_keywords", [])
-
-        # 타입 유효성 검사
-        if not isinstance(selected_keywords, list) or not isinstance(custom_keywords, list):
-            return Response(
-                {"error": "selected_keywords와 custom_keywords는 리스트 형태여야 합니다."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 합쳐서 최대 3개 제한
-        combined = selected_keywords + custom_keywords
-        if len(combined) > 3:
-            return Response(
-                {"error": "최대 3개의 교훈만 선택할 수 있습니다."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Redis에 저장
-        redis_client = self._get_redis_client()
         user_id = request.user.id
-        redis_key = f"story_keywords:{user_id}"
+        redis_key = f"story_morals:{user_id}"
 
-        redis_client.set(redis_key, ",".join(combined))  # 콤마로 구분된 문자열로 저장
+        redis_client.hset(redis_key, mapping={
+            "selected_ids": ",".join(map(str, selected_ids)),
+            "custom_morals": ",".join(custom_morals)
+        })
 
-        return Response(
-            {
-                "message": "선택한 교훈이 저장되었습니다.",
-                "next": "/api/story/generate/"
-            },
-            status=status.HTTP_200_OK
-        )
-    
+        return Response({
+            "message": "교훈이 저장되었습니다.",
+            "next": "/api/story/generate/"
+        }, status=200)
+'''    
 class StoryStyleSelectView(APIView):
     """
     사용자가 동화의 삽화 스타일을 선택하는 API
@@ -301,110 +287,275 @@ class IllustrationRegenerateView(APIView):
                 {"error": f"재생성 중 오류가 발생했습니다: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+'''
+def extract_title_and_body(text):
+    title_match = re.search(r"제목\s*[:\-]\s*(.+)", text)
+    
+    if title_match:
+        title = title_match.group(1).strip()
         
-class ClonedVoiceTTSView(APIView):
-    """
-    이미 클로닝된 사용자의 SE 벡터를 이용해
-    title + author + 각 page.text를 사용자 목소리로 TTS 합성
-    """
+        body = re.sub(r"제목\s*[:\-]\s*.+", "", text, count=1).strip()
+        return title, body
+
+    lines = text.strip().split("\n")
+    if len(lines) > 1:
+        title = lines[0].strip()
+        body = "\n".join(lines[1:]).strip()
+        return title, body
+    
+    return "제목 없음", text.strip()
+
+class StoryGenerateView(APIView):
     permission_classes = [IsAuthenticated]
 
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    BASE_SPEAKER_SE = os.path.join(BASE_DIR, "checkpoints_v2", "base_speakers", "ses", "kr.pth")
-    BASE_SPEAKER_AUDIO = os.path.join(BASE_DIR, "checkpoints_v2", "base_speakers", "base_ko.wav")
-
-
     def post(self, request):
+        ensure_default_morals()
+
+        redis_client = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
+        )
+
+        user_id = request.user.id
+        option = redis_client.hgetall(f"story_option:{user_id}")
+        draft = redis_client.get(f"story_draft:{user_id}")
+        moral_data = redis_client.hgetall(f"story_morals:{user_id}")
+
+        if not option or not moral_data:
+            return Response({"error": "필요한 데이터가 모두 준비되지 않았습니다."}, status=400)
+
+        selected_ids = [int(i) for i in moral_data.get("selected_ids", "").split(",") if i]
+        custom_morals = [k.strip() for k in moral_data.get("custom_morals", "").split(",") if k.strip()]
+
+        themes = list(MoralTheme.objects.filter(id__in=selected_ids))
+        all_moral_texts = [t.name for t in themes] + custom_morals
+
+        runtime = option.get("runtime")
+        age_group = option.get("age_group")
+        morals = ", ".join(all_moral_texts)
+
+        prompt = f"""
+        다음 조건에 맞는 창작 동화를 작성해주세요.
+        - 분량: {runtime}
+        - 대상 연령: {age_group}
+        - 교훈 키워드: {morals}
+        - 사용자가 입력한 에피소드 초안: {draft}
+        결과는 제목과 본문으로 구성해주세요.
+        """
+
         try:
-            data = request.data
-            title = data.get("title")
-            author = data.get("author")
-            pages = data.get("pages")
-
-            # 1️⃣ 유효성 검사
-            if not all([title, author, pages]):
-                return Response(
-                    {"error": "title, author, pages 필드가 모두 필요합니다."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # 2️⃣ 사용자 클로닝된 화자 정보 가져오기
-            cloned = ClonedVoice.objects.filter(user=request.user).last()
-            if not cloned or not cloned.se_file:
-                return Response(
-                    {"error": "먼저 /voice/clone/ API를 통해 목소리를 클로닝해주세요."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # 3️⃣ SE 벡터 로드
-            device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            with default_storage.open(cloned.se_file.name, "rb") as f:
-                reference_se = torch.load(f, map_location=device)
-            base_se = torch.load(self.BASE_SPEAKER_SE, map_location=device)
-
-            # 4️⃣ MeloTTS 초기화
-            tts = TTS(language="KR", device=device)
-            print("✅ Model loaded:", hasattr(tts, "model"))
-            print("✅ Speakers:", tts.hps.data.spk2id if hasattr(tts, "hps") else None)
-            speaker_id = list(tts.hps.data.spk2id.values())[0]
-            os.makedirs("outputs_v2", exist_ok=True)
-
-            tts_urls = []
-
-            # 5️⃣ 제목 + 작가 오디오 생성
-            intro_text = f"제목, {title}. 지은이, {author}."
-            base_intro_path = os.path.join("outputs_v2", f"{request.user.id}_intro_base.wav")
-            cloned_intro_path = os.path.join("outputs_v2", f"{request.user.id}_intro_clone.wav")
-
-            # 기본 화자로 TTS
-            tts.tts_to_file(intro_text, speaker_id, base_intro_path, speed=1.0)
-
-            # 사용자 화자 음색으로 변환
-            tone_color_converter.convert(
-                audio_src_path=base_intro_path,
-                src_se=base_se,
-                tgt_se=reference_se,
-                output_path=cloned_intro_path,
-                message="@MyShell"
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "당신은 부모님의 에피소드를 기반으로 아이에게 들려줄 이야기를 창작하는 동화 작가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
             )
-
-            with open(cloned_intro_path, "rb") as f:
-                s3_path = default_storage.save(f"tts_outputs/{request.user.id}_intro_clone.wav", File(f))
-                tts_urls.append(default_storage.url(s3_path))
-
-            # 6️⃣ 각 페이지별 오디오 생성
-            for page in pages:
-                page_text = page.get("text")
-                page_num = page.get("page")
-                if not page_text:
-                    continue
-
-                base_path = os.path.join("outputs_v2", f"{request.user.id}_page_{page_num}_base.wav")
-                clone_path = os.path.join("outputs_v2", f"{request.user.id}_page_{page_num}_clone.wav")
-
-                tts.tts_to_file(page_text, speaker_id, base_path, speed=1.0)
-
-                tone_color_converter.convert(
-                    audio_src_path=base_path,
-                    src_se=base_se,
-                    tgt_se=reference_se,
-                    output_path=clone_path,
-                    message="@MyShell"
-                )
-
-                with open(clone_path, "rb") as f:
-                    s3_path = default_storage.save(f"tts_outputs/{request.user.id}_page_{page_num}_clone.wav", File(f))
-                    tts_urls.append(default_storage.url(s3_path))
-
-                os.remove(base_path)
-                os.remove(clone_path)
-
-            # ✅ 응답 반환
-            return Response({"tts_audio_urls": tts_urls}, status=status.HTTP_200_OK)
+            ai_text = response.choices[0].message.content.strip()
+            title, body = extract_title_and_body(ai_text)
 
         except Exception as e:
-            import traceback
-            print("🔥 [TTS ERROR TRACEBACK START] 🔥")
-            print(traceback.format_exc())
-            print("🔥 [TTS ERROR TRACEBACK END] 🔥")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"AI 생성 오류: {str(e)}"}, status=500)
+
+        story = Story.objects.create(
+            user=request.user,
+            title=title,
+            author=request.user.username,
+            content=body,
+            category="custom",
+            runtime=runtime,
+            age_group=age_group,
+        )
+
+        for theme in themes:
+            story.morals.add(theme)
+        for kw in custom_morals:
+            custom_theme, _ = MoralTheme.objects.get_or_create(name=kw, defaults={"key": f"custom_{kw}"})
+            story.morals.add(custom_theme)
+
+        pages = split_into_pages(body)
+
+        for id, page_text in enumerate(pages, start=1):
+            StoryPage.objects.create(
+                story=story,
+                page_number=id,
+                text=page_text
+            )
+        
+        story.page_count = len(pages)
+        story.save()
+
+        serializer = StorySerializer(story)
+
+        Library.objects.get_or_create(
+                user=request.user,
+                story=story,
+            )
+
+        # 캐시 초기화
+        redis_client.delete(f"story_option:{user_id}")
+        redis_client.delete(f"story_draft:{user_id}")
+        redis_client.delete(f"story_keywords:{user_id}")
+
+        return Response(serializer.data, status=201)
+
+class StoryListView(APIView):
+    def get(self, request):
+        category = request.query_params.get("category")
+        stories = Story.objects.all()
+
+        if category in ["classic", "custom", "extended"]:
+            stories = stories.filter(category=category)
+        
+        stories = stories.order_by("-created_at")
+        
+        serializer = StoryInfoSerializer(stories, many=True)
+
+        return Response(serializer.data, status=200)
+    
+class StoryDetailView(APIView):
+    def get(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+
+        serializer = StorySerializer(story)
+        return Response(serializer.data, status=200)
+    
+class StoryPageListView(APIView):
+    def get(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+
+        if request.user.is_authenticated:
+            lib, created = Library.objects.get_or_create(
+                user=request.user,
+                story=story,
+            )
+            print("created:", created)
+            lib.last_viewed_time = timezone.now()
+            lib.save()
+
+        pages = StoryPage.objects.filter(story=story).order_by("page_number")
+        serializer = StoryPageSerializer(pages, many=True)
+        return Response(serializer.data, status=200)
+
+class StoryScriptView(APIView):
+    def get(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+        
+        pages = StoryPage.objects.filter(story=story).order_by("page_number")
+        serializer = StoryScriptSerializer(pages, many=True)
+        return Response(serializer.data, status=200)
+
+'''
+class StoryJsonImportView(APIView):
+    """
+    S3의 files/stories 폴더에서 json 파일을 읽어 Story와 StoryPage로 저장
+    파일명 예: stories/story1.json (버킷 내부 경로)
+    """
+    def post(self, request):
+        filename = request.data.get("filename")
+        if not filename:
+            return Response({"detail": "filename required"}, status=400)
+        
+        """
+        path = os.path.join(settings.BASE_DIR, "static", "stories", filename)
+        if not os.path.exists(path):
+            return Response({"detail": "file not found"}, status=404)
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        """
+        s3_path = f"stories/{filename}"
+        if not default_storage.exists(s3_path):
+            s3_path = f"media/stories/{filename}"
+            if not default_storage.exists(s3_path):
+                return Response({"detail": f"{s3_path} not found in S3"}, status=404)
+        with default_storage.open(s3_path, "r") as f:
+            data = json.load(f)
+
+
+        story = Story.objects.create(
+            user = request.user,
+            title=data.get("title", "무제 동화"),
+            content=" ".join([p.get("text", "") for p in data.get("pages", [])]),
+            page_count=len(data.get("pages", []))
+        )
+
+
+        for i, page in enumerate(data["pages"], start=1):
+            StoryPage.objects.create(story=story, page_number=i, text=page.get("text", ""))
+
+        return Response({"story_id": story.id, "title": story.title}, status=201)
+'''
+import chardet  
+class ClassicStoryUploadView(APIView):
+
+    def post(self, request):
+        
+        filename = request.data.get("filename")
+        title = request.data.get("title")
+        author = request.data.get("author", "Unknown")
+
+        if not filename:
+            return Response({"error": "filename is required"}, status=400)
+
+        possible_paths = [
+            f"stories/{filename}",
+            f"media/stories/{filename}",
+            filename,
+        ]
+
+        file_path = None
+        for path in possible_paths:
+            if default_storage.exists(path):
+                file_path = path
+                break
+
+        if not file_path:
+            return Response({"detail": f"{filename} not found in S3"}, status=404)
+
+
+        with default_storage.open(file_path, "rb") as f:
+            raw_bytes = f.read()
+        
+        detected = chardet.detect(raw_bytes)
+        encoding = detected.get("encoding", "utf-8")
+
+        raw_text = raw_bytes.decode(encoding, errors="ignore")
+
+        story = Story.objects.create(
+            user=request.user,
+            child=None,
+            voice=None,
+            title=title,
+            author=author,
+            content=raw_text,
+            category="classic",
+            created_at=timezone.now(),
+        )
+
+        pages = split_into_pages(raw_text)
+
+        for i, page_text in enumerate(pages, start=1):
+            StoryPage.objects.create(
+                story=story,
+                page_number=i,
+                text=page_text
+            )
+
+        story.page_count = len(pages)
+        story.save()
+
+        return Response({
+            "story_id": story.id,
+            "title": story.title,
+            "page_count": story.page_count
+        }, status=201)
+
