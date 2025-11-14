@@ -13,7 +13,7 @@ class Theme(models.Model):
 class Story(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stories")
     child = models.ForeignKey(Child, on_delete=models.CASCADE, blank=True, related_name="stories")
-    voice = models.ForeignKey(Voice, on_delete=models.CASCADE, blank=True, related_name="stories")
+    voice = models.ForeignKey(ClonedVoice, on_delete=models.CASCADE, blank=True, related_name="stories")
 
     title = models.CharField(max_length=200)
     cover = models.ImageField(upload_to='stories/', null=True)
