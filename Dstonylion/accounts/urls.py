@@ -8,6 +8,7 @@ urlpatterns = [
     path("user/delete/", UserDeleteView.as_view(), name="user-delete"),
     path("mypage/", MyPageView.as_view(), name="mypage"),
     path("user/profile/", UserProfileView.as_view(), name="user-profile"),
+    path("user/child/<int:child_id>/activate/", ChildActivateView.as_view()),
     path("user/profile/update/", UserProfileUpdateView.as_view(), name="user-profile-update"),
     path("user/child/", ChildCreateView.as_view(), name="child-create"),
     path("user/child/detail/<int:child_id>/", ChildDetailView.as_view(), name="child-detail"),

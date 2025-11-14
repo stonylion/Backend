@@ -269,6 +269,48 @@ class ChildCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+class ChildActivateView(APIView):
+    """
+    특정 아이를 활성화하는 API
+    PUT /api/user/child/<child_id>/activate/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, child_id):
+        try:
+            user = request.user
+
+            # 본인 자녀만 활성화 가능
+            try:
+                child = Child.objects.get(id=child_id, user=user)
+            except Child.DoesNotExist:
+                return Response(
+                    {"error": "해당 아이 정보를 찾을 수 없습니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 선택한 아이 활성화
+            child.is_active = True
+            child.save()
+
+            # 해당 유저의 다른 아이는 모두 비활성화
+            Child.objects.filter(user=user).exclude(id=child_id).update(is_active=False)
+
+            return Response(
+                {
+                    "child_id": child_id,
+                    "message": "아이 활성화가 완료되었습니다."
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": f"아이 활성화 중 오류가 발생했습니다: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        
 class ChildDetailView(APIView):
     """
     특정 아이의 상세 정보를 조회하는 API
