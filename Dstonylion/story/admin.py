@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Story, StoryPage, Illustrations, Theme, StoryTheme, Extension
+from .models import Story, StoryPage, Illustrations, MoralTheme, StoryExtension, StoryLike, StoryView
 
 class StoryPageInline(admin.TabularInline):
     model = StoryPage
@@ -14,6 +14,7 @@ admin.site.register(Illustrations)
 class IllustrationAdmin(admin.ModelAdmin):
     list_display = ("id", "story_page", "created_at")
 
-admin.site.register(Theme)
-admin.site.register(StoryTheme)
-admin.site.register(Extension)
+admin.site.register(MoralTheme)
+admin.site.register(StoryLike)
+admin.site.register(StoryView)
+admin.site.register(StoryExtension)

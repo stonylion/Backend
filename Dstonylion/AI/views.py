@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from story.models import Story, StoryPage, Illustrations, Extension
+from story.models import Story, StoryPage, Illustrations
 from .models import IllustrationJob, ChatRoom
 from .serializers import *
 

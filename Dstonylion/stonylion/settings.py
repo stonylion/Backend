@@ -56,13 +56,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
-    'rest_framework',
-    'rest_framework_simplejwt',
     'accounts',
     'AI',
     'mylibrary',
     'story',
-    "channels",
     'rest_framework_simplejwt.token_blacklist',
 ]
 
@@ -127,7 +124,6 @@ CHANNEL_LAYERS = {
         }
     }
 }
-ASGI_APPLICATION = "project_root.asgi.application"
 
 # Redis
 CACHES = {
