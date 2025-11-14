@@ -16,8 +16,17 @@ class RecentReadView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, format=None):
-        libraries = Library.objects.filter(user=request.user).select_related("story").order_by("-last_viewed_time")
+        category = request.query_params.get("category")
+
+        libraries = Library.objects.filter(user=request.user).select_related("story")
+
+        if category in ["classic", "custom", "extended"]:
+            libraries = libraries.filter(story__category=category)
+
+        libraries = libraries.order_by("-last_viewed_time")
+        
         serializer = LibrarySerializer(libraries, many=True)
+
         return Response({
             "count": libraries.count(),
             "results": serializer.data
@@ -27,31 +36,30 @@ class RecentGeneratedView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, format=None):
-        library = Library.objects.filter(user=request.user).select_related("story").order_by("-story__created_at")
-        serializer = LibrarySerializer(library, many=True)
+        category = request.query_params.get("category")
+
+        libraries = Library.objects.filter(user=request.user).select_related("story")
+
+        if category in ["classic", "custom", "extended"]:
+            libraries = libraries.filter(story__category=category)
+
+        libraries = libraries.order_by("-story__created_at")
+
+        serializer = LibrarySerializer(libraries, many=True)
+
         return Response({
-            "count": library.count(),
+            "count": libraries.count(),
             "results":serializer.data
         })
 
 class LibraryDetailView(views.APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, story_id):
-        story = Story.objects.filter(id=story_id).first()
-        if not story:
-            return Response({"detail": "Story not found"}, status=404)
-        
-        pages = StoryPage.objects.filter(story=story).order_by("page_number")
-        serializer = StoryScriptSerializer(pages, many=True)
-        return Response(serializer.data, status=200)
-
-
     def delete(self, request, library_id):
         library = get_object_or_404(Library, id=library_id, user=request.user)
         story = library.story
         
-        if story.story_type == "classic":
+        if story.category == "classic":
             library.delete()
             return Response({"detail": "내 서재에서 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
         
