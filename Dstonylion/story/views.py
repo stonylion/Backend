@@ -12,6 +12,11 @@ from rest_framework import viewsets, status
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from story.utils import split_into_pages
+from dotenv import load_dotenv
+from django.utils.text import slugify
+
+load_dotenv(settings.BASE_DIR/ ".env")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 User = get_user_model()
 
@@ -46,62 +51,40 @@ class StoryOptionSaveView(APIView):
 
         return Response({"next": "/story/record/"}, status=status.HTTP_200_OK)
     
-class StoryDraftView(APIView):
+class StoryDraftUpdateView(APIView):
+    """
+    사용자가 텍스트 입력으로 최종 입력한 내용을 Redis에 저장하는 API
+    POST /api/story/draft/
+    """
     permission_classes = [IsAuthenticated]
 
-    def _redis(self):
-        return redis.StrictRedis(
+    def post(self, request):
+        text = request.data.get("text")
+
+        if not text:
+            return Response(
+                {"error": "text는 필수 항목입니다."},
+                status=400
+            )
+
+        # Redis 연결
+        redis_client = redis.StrictRedis(
             host=getattr(settings, "REDIS_HOST", "localhost"),
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
-            decode_responses=True
+            decode_responses=True,
         )
-    
-    def _normalize_text(self, text: str) -> str:
-        text = re.sub(r"\s+", " ", text)
-        text = text.strip()
-        if not text:
-            return ""
-        if not text.endswith((".", "?", "!")):
-            text += "."
-        return text.strip()
 
-    def get(self, request):
-        redis_client = self._redis()
-        text = redis_client.get(f"story_draft:{request.user.id}") or ""
-        return Response({"draft_text": text}, status=200)
+        redis_key = f"story_draft:{request.user.id}"
 
-    def post(self, request):
-        redis_client = self._redis()
-        draft_key = f"story_draft:{request.user.id}"
-        draft_text = request.data.get("draft_text", "")
-        mode = request.data.get("mode")
+        # 최종 텍스트 저장
+        redis_client.set(redis_key, text)
 
-        if draft_text:
-            draft_text = self._normalize_text(draft_text)
+        return Response(
+            {"message": "draft 업데이트 완료되었습니다."},
+            status=200
+        )
 
-        if mode is None:
-            redis_client.set(draft_key, draft_text)
-            return Response({"message": "Draft 저장 완료"}, status=200)
-
-        elif mode == "switch_to_text":
-            # WebSocket에 'pause' 명령 전송은 프론트가 수행
-            current_draft = redis_client.get(draft_key) or ""
-            return Response({
-                "message": "음성 입력이 일시정지되었습니다. 텍스트 모드로 전환합니다.",
-                "draft_text": current_draft
-            }, status=200)
-
-        elif mode == "switch_to_voice":
-            redis_client.set(draft_key, draft_text)
-            # 프론트가 이 응답을 받으면 WebSocket을 재연결하여 resume
-            return Response({
-                "message": "텍스트가 저장되었습니다. 이어서 말하기로 전환합니다.",
-                "next_ws": "story/draft-stt/"
-            }, status=200)
-
-        else:
-            return Response({"error": "유효하지 않은 mode입니다."}, status=400)
 
 DEFAULT_MORALS = [
     {"key": "family", "name": "가족"},
@@ -122,6 +105,76 @@ DEFAULT_MORALS = [
     {"key": "hope", "name": "희망"},
 ]
 
+DEFAULT_MORAL_KEYS = [m["key"] for m in DEFAULT_MORALS]
+
+class RecommendMoralView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # 1. 요청 데이터 검증
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response({"error": "text는 필수 항목입니다."}, status=400)
+
+        if len(text) < 20:
+            return Response({"error": "스토리 내용이 너무 짧아 추천할 수 없습니다."}, status=400)
+
+        # 2. OpenAI 프롬프트 구성
+        prompt = f"""
+        아래는 사용자가 작성한 동화 내용입니다.
+
+        ---
+        {text}
+        ---
+
+        위 내용을 읽고 '새로운 교훈 키워드'를 추천해주세요.
+
+        조건:
+        - 아래 DEFAULT_MORALS 목록에 포함되지 않은 교훈만 추천하기
+        - 최대 3개
+        - 영어 key + 한국어 name 형태로 JSON 배열로 반환
+        - key는 영어 소문자 슬러그
+        - name은 한국어로 가치/교훈을 한 단어로 자연스럽게 표현
+
+        DEFAULT_MORALS = {DEFAULT_MORAL_KEYS}
+
+        예시 답변 형식:
+        [
+          {{ "key": "forgiveness", "name": "용서" }},
+          {{ "key": "wisdom", "name": "지혜" }}
+        ]
+
+        반드시 JSON 형식만 반환하세요.
+        """
+
+        try:
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.4,
+            )
+
+            raw = response.choices[0].message.content
+
+        except Exception as e:
+            return Response({"error": f"AI 요청 실패: {str(e)}"}, status=500)
+
+        # 3. JSON 파싱
+        try:
+            import json
+            recommended = json.loads(raw)
+        except Exception:
+            return Response({"error": "AI 응답 파싱 실패"}, status=500)
+
+        # 4. DEFAULT_MORALS 중복 제거
+        filtered = [m for m in recommended if m["key"] not in DEFAULT_MORAL_KEYS]
+
+        return Response({
+            "recommended_morals": filtered[:3]
+        }, status=200)
+    
+
 def ensure_default_morals():
     for moral in DEFAULT_MORALS:
         MoralTheme.objects.get_or_create(key=moral["key"], defaults={"name": moral["name"]})
@@ -135,7 +188,7 @@ class MoralThemeListView(APIView):
         serializer = MoralThemeSerializer(morals, many=True)
         return Response(serializer.data, status=200)
 
-#교훈 키워드 선택 혹은 추가
+#교훈 키워드 기존 선택, 추천 선택, 혹은 추가
 class StoryMoralSaveView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -151,6 +204,21 @@ class StoryMoralSaveView(APIView):
             return Response({"error": "최소 1개의 교훈을 선택해주세요."}, status=400)
         if total_count > 3:
             return Response({"error": "최대 3개의 교훈만 선택할 수 있습니다."}, status=400)
+        
+        created_custom_ids = []
+        
+        # custom_morals = ["용서", "지혜"] 같은 문자열 리스트
+        for name in custom_morals:
+            if not isinstance(name, str) or not name.strip():
+                return Response({"error": "custom_morals는 문자열 리스트여야 합니다."}, status=400)
+
+            key = slugify(name, allow_unicode=False)  # "용서" → "yong-seo" 같은 슬러그 자동 생성
+
+            obj, _ = MoralTheme.objects.get_or_create(
+                key=key,
+                defaults={"name": name}
+            )
+            created_custom_ids.append(obj.id)
 
         # Redis 저장
         redis_client = redis.StrictRedis(
@@ -171,6 +239,164 @@ class StoryMoralSaveView(APIView):
             "message": "교훈이 저장되었습니다.",
             "next": "/api/story/generate/"
         }, status=200)
+
+def extract_title_and_body(text):
+    title_match = re.search(r"제목\s*[:\-]\s*(.+)", text)
+    
+    if title_match:
+        title = title_match.group(1).strip()
+        
+        body = re.sub(r"제목\s*[:\-]\s*.+", "", text, count=1).strip()
+        return title, body
+
+    lines = text.strip().split("\n")
+    if len(lines) > 1:
+        title = lines[0].strip()
+        body = "\n".join(lines[1:]).strip()
+        return title, body
+    
+    return "제목 없음", text.strip()
+
+class StoryGenerateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ensure_default_morals()
+
+        redis_client = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
+        )
+
+        user_id = request.user.id
+        option = redis_client.hgetall(f"story_option:{user_id}")
+        draft = redis_client.get(f"story_draft:{user_id}")
+        moral_data = redis_client.hgetall(f"story_morals:{user_id}")
+
+        if not option or not moral_data:
+            return Response({"error": "필요한 데이터가 모두 준비되지 않았습니다."}, status=400)
+
+        selected_ids = [int(i) for i in moral_data.get("selected_ids", "").split(",") if i]
+        custom_morals = [k.strip() for k in moral_data.get("custom_morals", "").split(",") if k.strip()]
+
+        themes = list(MoralTheme.objects.filter(id__in=selected_ids))
+        all_moral_texts = [t.name for t in themes] + custom_morals
+
+        runtime = option.get("runtime")
+        age_group = option.get("age_group")
+        morals = ", ".join(all_moral_texts)
+
+        prompt = f"""
+        당신은 0~7세 아이들을 위한 짧고 명확한 창작 동화를 만드는 동화 작가입니다.
+
+        아래 조건에 맞춰 동화를 작성하세요.
+
+        [출력 형식 - 매우 중요]
+        제목: 한 줄 제목
+        본문:
+
+        [금지 규칙]
+        - Markdown 문법(###, **, *, ``` 등) 절대 금지
+        - "본문:, 제목:, \n"이라는 단어를 본문 안에 쓰지 말 것
+        - "###", "-", 번호 목록 등 리스트 문법 금지
+        - JSON, 코드블록 금지
+        - AI 설명, 주석 금지
+        - \n 문자 그대로 출력 금지(자연스러운 줄바꿈만 사용)
+        - 절대 줄바꿈을 하지 말고, 모든 문장을 한 줄로 이어서 작성하세요.
+
+        [본문 스타일]
+        - 어린이용 동화체
+        - 짧고 쉬운 문장
+        - {age_group} 수준의 난이도
+        - 전체 길이는 {runtime} 분량
+        - 교훈 키워드: {morals}
+        - 아래 초안을 참고하되, 내용은 부드럽게 재창작
+        - 초안을 그대로 복붙하지 말고 흐름을 자연스럽게 구성
+        - 마무리를 동화스럽게 교훈 키워드를 잘 활용
+        [사용자 초안]
+        {draft}
+        """
+
+
+        try:
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "당신은 부모님의 에피소드를 기반으로 아이에게 들려줄 이야기를 창작하는 동화 작가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
+            )
+            ai_text = response.choices[0].message.content.strip()
+            title, body = extract_title_and_body(ai_text)
+
+        except Exception as e:
+            return Response({"error": f"AI 생성 오류: {str(e)}"}, status=500)
+
+        story = Story.objects.create(
+            user=request.user,
+            title=title,
+            author=request.user.username,
+            content=body,
+            category="custom",
+            runtime=runtime,
+            age_group=age_group,
+        )
+
+        for theme in themes:
+            story.morals.add(theme)
+
+        for kw in custom_morals:
+            custom_theme, _ = MoralTheme.objects.get_or_create(name=kw, defaults={"key": f"custom_{kw}"})
+            story.morals.add(custom_theme)
+
+        pages = split_into_pages(body)
+
+        for id, page_text in enumerate(pages, start=1):
+            StoryPage.objects.create(
+                story=story,
+                page_number=id,
+                text=page_text
+            )
+        
+        story.page_count = len(pages)
+        story.save()
+
+        serializer = StorySerializer(story)
+        return Response(serializer.data, status=201)
+    
+class StoryResetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user_id = request.user.id
+        
+        try:
+            redis_client = redis.StrictRedis(
+                host=getattr(settings, "REDIS_HOST", "localhost"),
+                port=getattr(settings, "REDIS_PORT", 6379),
+                db=0,
+                decode_responses=True,
+            )
+
+            keys = [
+                f"story_option:{user_id}",
+                f"story_draft:{user_id}",
+                f"story_morals:{user_id}",
+            ]
+
+            for key in keys:
+                redis_client.delete(key)
+
+        except Exception:
+            return Response({"error": "Redis 연결에 실패했습니다."}, status=400)
+
+        return Response({
+            "message": "스토리 생성 흐름 데이터가 초기화되었습니다."
+        }, status=200)
+
+
 '''    
 class StoryStyleSelectView(APIView):
     """
@@ -288,118 +514,6 @@ class IllustrationRegenerateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 '''
-def extract_title_and_body(text):
-    title_match = re.search(r"제목\s*[:\-]\s*(.+)", text)
-    
-    if title_match:
-        title = title_match.group(1).strip()
-        
-        body = re.sub(r"제목\s*[:\-]\s*.+", "", text, count=1).strip()
-        return title, body
-
-    lines = text.strip().split("\n")
-    if len(lines) > 1:
-        title = lines[0].strip()
-        body = "\n".join(lines[1:]).strip()
-        return title, body
-    
-    return "제목 없음", text.strip()
-
-class StoryGenerateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        ensure_default_morals()
-
-        redis_client = redis.StrictRedis(
-            host=getattr(settings, "REDIS_HOST", "localhost"),
-            port=getattr(settings, "REDIS_PORT", 6379),
-            db=0,
-            decode_responses=True,
-        )
-
-        user_id = request.user.id
-        option = redis_client.hgetall(f"story_option:{user_id}")
-        draft = redis_client.get(f"story_draft:{user_id}")
-        moral_data = redis_client.hgetall(f"story_morals:{user_id}")
-
-        if not option or not moral_data:
-            return Response({"error": "필요한 데이터가 모두 준비되지 않았습니다."}, status=400)
-
-        selected_ids = [int(i) for i in moral_data.get("selected_ids", "").split(",") if i]
-        custom_morals = [k.strip() for k in moral_data.get("custom_morals", "").split(",") if k.strip()]
-
-        themes = list(MoralTheme.objects.filter(id__in=selected_ids))
-        all_moral_texts = [t.name for t in themes] + custom_morals
-
-        runtime = option.get("runtime")
-        age_group = option.get("age_group")
-        morals = ", ".join(all_moral_texts)
-
-        prompt = f"""
-        다음 조건에 맞는 창작 동화를 작성해주세요.
-        - 분량: {runtime}
-        - 대상 연령: {age_group}
-        - 교훈 키워드: {morals}
-        - 사용자가 입력한 에피소드 초안: {draft}
-        결과는 제목과 본문으로 구성해주세요.
-        """
-
-        try:
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "당신은 부모님의 에피소드를 기반으로 아이에게 들려줄 이야기를 창작하는 동화 작가입니다."},
-                    {"role": "user", "content": prompt}
-                ],
-            )
-            ai_text = response.choices[0].message.content.strip()
-            title, body = extract_title_and_body(ai_text)
-
-        except Exception as e:
-            return Response({"error": f"AI 생성 오류: {str(e)}"}, status=500)
-
-        story = Story.objects.create(
-            user=request.user,
-            title=title,
-            author=request.user.username,
-            content=body,
-            category="custom",
-            runtime=runtime,
-            age_group=age_group,
-        )
-
-        for theme in themes:
-            story.morals.add(theme)
-        for kw in custom_morals:
-            custom_theme, _ = MoralTheme.objects.get_or_create(name=kw, defaults={"key": f"custom_{kw}"})
-            story.morals.add(custom_theme)
-
-        pages = split_into_pages(body)
-
-        for id, page_text in enumerate(pages, start=1):
-            StoryPage.objects.create(
-                story=story,
-                page_number=id,
-                text=page_text
-            )
-        
-        story.page_count = len(pages)
-        story.save()
-
-        serializer = StorySerializer(story)
-
-        Library.objects.get_or_create(
-                user=request.user,
-                story=story,
-            )
-
-        # 캐시 초기화
-        redis_client.delete(f"story_option:{user_id}")
-        redis_client.delete(f"story_draft:{user_id}")
-        redis_client.delete(f"story_keywords:{user_id}")
-
-        return Response(serializer.data, status=201)
 
 class StoryListView(APIView):
     def get(self, request):

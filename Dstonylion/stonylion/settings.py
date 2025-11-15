@@ -135,6 +135,19 @@ CACHES = {
         }
     }
 }
+# AWS elasticache
+'''
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://storylion-redis.xxxxxx.ng.0001.apne2.cache.amazonaws.com:6379/0",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "PASSWORD": "",  # 암호 넣지 않은 구성
+        }
+    }
+}
+'''
 
 
 # Database

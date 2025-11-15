@@ -39,12 +39,14 @@ class SignupView(views.APIView):
         if serializer.is_valid():
             user = serializer.save()
             tokens = get_tokens(user)
+            user_data = {"username": user.username,"avatar_code": user.avatar_code}
+
             return Response(
-                {"message":"회원가입 성공", "user": serializer.data, "token":tokens},
+                {"message":"회원가입 성공", "user": user_data, "token":tokens},
                 status=status.HTTP_201_CREATED)
         return Response(
-            {"message":"회원가입 실패"},
-            serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            {"message":"회원가입 실패", "errors": serializer.errors},
+        status=status.HTTP_400_BAD_REQUEST)
 
 class LoginView(views.APIView):
     permission_classes = [AllowAny]
@@ -55,7 +57,7 @@ class LoginView(views.APIView):
             user = serializer.validated_data["user"]
             tokens = get_tokens(user)
             return Response(
-                {"message":"로그인 성공", "user":UserSerializer(user).data, "token":tokens},
+                {"message":"로그인 성공", "user": UserSerializer(user).data,  "token":tokens},
                 status=status.HTTP_200_OK)
         return Response(
                 {"message": "로그인 실패", "errors": serializer.errors},
@@ -135,10 +137,7 @@ class MyPageView(APIView):
         # 사용자 정보 구성
         user_data = {
             "username": user.username,
-            "profile_image": (
-                request.build_absolute_uri(user.profile_image.url)
-                if user.profile_image else None
-            )
+            "avatar_code": user.avatar_code,
         }
 
         # 아이 목록 구성 (모든 children 포함 — is_active 필드만 반환)
@@ -172,9 +171,7 @@ class UserProfileView(APIView):
                 {
                     "user_id": user.id,
                     "username": user.username,
-                    "profile_image_url": (
-                        user.profile_image.url if user.profile_image else None
-                    ),
+                    "avatar_code": user.avatar_code,
                 },
                 status=status.HTTP_200_OK,
             )
@@ -205,8 +202,8 @@ class UserProfileUpdateView(APIView):
                 user.set_password(data["password"])
 
             # 프로필 이미지 수정
-            if "profile_image_url" in data:
-                user.profile_image = data["profile_image_url"]
+            if "avatar_code" in data:
+                user.avatar_code = data["avatar_code"]
 
             user.save()
 
@@ -227,6 +224,7 @@ class ChildCreateView(APIView):
     POST /api/user/child/
     """
     permission_classes = [IsAuthenticated]
+    ALLOWED_CODES = ["child1", "child2", "child3", "child4"]
 
     def post(self, request):
         try:
@@ -236,12 +234,23 @@ class ChildCreateView(APIView):
             name = data.get("name")
             birth_date = data.get("birth_date")
             gender = data.get("gender")
-            profile_image_url = data.get("profile_image_url")
+            child_image_code = data.get("child_image_code")
 
             # 필수 필드 확인
             if not name:
                 return Response(
                     {"error": "이름은 필수 항목입니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if child_image_code not in self.ALLOWED_CODES:
+                return Response(
+                    {"error": "child_image_code는 child1/child2/child3/child4 중 하나여야 합니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if gender not in ["F", "M"]:
+                return Response(
+                    {"error": "gender는 F(여자) 또는 M(남자)여야 합니다."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -251,7 +260,7 @@ class ChildCreateView(APIView):
                 name=name,
                 birth=birth_date,
                 gender=gender,
-                profile_image=profile_image_url,
+                child_image_code=child_image_code,
                 is_active=True,
             )
             Child.objects.filter(user=user).exclude(id=new_child.id).update(is_active=False)
@@ -261,7 +270,7 @@ class ChildCreateView(APIView):
                     "child_id": new_child.id,
                     "message": "아이 정보 등록이 완료되었습니다."
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_201_CREATED
             )
 
         except Exception as e:
@@ -339,9 +348,7 @@ class ChildDetailView(APIView):
                     "name": child.name,
                     "birth_date": child.birth.strftime("%Y-%m-%d") if child.birth else None,
                     "gender": child.gender,
-                    "profile_image_url": (
-                        child.profile_image.url if child.profile_image else None
-                    ),
+                    "child_image_code": child.child_image_code,
                     "is_active": child.is_active
                 },
                 status=status.HTTP_200_OK
@@ -381,8 +388,8 @@ class ChildUpdateView(APIView):
                 child.birth = data["birth_date"]
             if "gender" in data:
                 child.gender = data["gender"]
-            if "profile_image_url" in data:
-                child.profile_image = data["profile_image_url"]
+            if "avatar_code" in data:
+                user.avatar_code = data["avatar_code"]
 
             child.save()
 
@@ -404,6 +411,7 @@ class VoiceCreateView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    ALLOWED_CODES = ["voice1", "voice2", "voice3", "voice4"]
 
     def post(self, request):
         try:
@@ -411,14 +419,22 @@ class VoiceCreateView(APIView):
             data = request.data
 
             voice_name = data.get("voice_name")
-            profile_image_url = data.get("profile_image_url")
+            voice_image_code = data.get("voice_image_code", "voice1")
 
-            # ✅ 필수값 체크
+            # 필수값 체크
             if not voice_name:
                 return Response(
                     {"error": "voice_name은 필수 입력 항목입니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            
+            # image_code 유효성 체크
+            if voice_image_code not in self.ALLOWED_CODES:
+                return Response(
+                    {"error": "유효하지 않은 voice_image_code 입니다."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
 
             # Voice 객체 생성
             voice = ClonedVoice.objects.create(
@@ -426,11 +442,6 @@ class VoiceCreateView(APIView):
                 voice_name=voice_name,
                 created_at=timezone.now(),
             )
-
-            # 이미지 URL 저장 (optional)
-            if profile_image_url:
-                voice.profile_image = profile_image_url
-                voice.save()
 
             return Response(
                 {
@@ -559,7 +570,7 @@ class VoiceDetailView(APIView):
             data = {
                 "voice_id": voice.id,
                 "voice_name": voice.voice_name,
-                "voice_profile_image": voice.voice_profile_image,
+                "voice_image_code": voice.voice_image_code,
                 "cloned_voice_file": (
                     request.build_absolute_uri(voice.cloned_voice_file.url)
                     if voice.cloned_voice_file else None
@@ -579,8 +590,8 @@ class VoiceDetailView(APIView):
 
             if "voice_name" in data:
                 voice.voice_name = data["voice_name"]
-            if "voice_profile_image" in data:
-                voice.voice_profile_image = data["voice_profile_image"]
+            if "voice_image_code" in data:    
+                voice.voice_image_code = data["voice_image_code"]
             voice.save()
 
             return Response(
@@ -680,7 +691,7 @@ class VoiceListView(APIView):
                         request.build_absolute_uri(v.cloned_voice_file.url)
                         if v.cloned_voice_file else None
                     ),
-                    "profile_image_url": v.voice_profile_image
+                    "voice_image_code": v.voice_image_code, 
                 })
 
             return Response({"voices": result}, status=status.HTTP_200_OK)
