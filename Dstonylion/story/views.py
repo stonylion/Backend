@@ -1,4 +1,5 @@
-import redis, random, os, json, openai, re
+import redis, random, os, json, re
+import openai
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.views import APIView
@@ -16,7 +17,7 @@ from dotenv import load_dotenv
 from django.utils.text import slugify
 
 load_dotenv(settings.BASE_DIR/ ".env")
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# openai.api_key = os.getenv("OPENAI_API_KEY")
 
 User = get_user_model()
 
@@ -396,8 +397,6 @@ class StoryResetView(APIView):
             "message": "스토리 생성 흐름 데이터가 초기화되었습니다."
         }, status=200)
 
-
-'''    
 class StoryStyleSelectView(APIView):
     """
     사용자가 동화의 삽화 스타일을 선택하는 API
@@ -513,7 +512,6 @@ class IllustrationRegenerateView(APIView):
                 {"error": f"재생성 중 오류가 발생했습니다: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-'''
 
 class StoryListView(APIView):
     def get(self, request):
@@ -567,7 +565,6 @@ class StoryScriptView(APIView):
         serializer = StoryScriptSerializer(pages, many=True)
         return Response(serializer.data, status=200)
 
-'''
 class StoryJsonImportView(APIView):
     """
     S3의 files/stories 폴더에서 json 파일을 읽어 Story와 StoryPage로 저장
@@ -607,7 +604,7 @@ class StoryJsonImportView(APIView):
             StoryPage.objects.create(story=story, page_number=i, text=page.get("text", ""))
 
         return Response({"story_id": story.id, "title": story.title}, status=201)
-'''
+
 import chardet  
 class ClassicStoryUploadView(APIView):
 

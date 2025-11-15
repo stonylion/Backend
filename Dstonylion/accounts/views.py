@@ -1,6 +1,6 @@
 import os
 import boto3
-# import torch
+import torch
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.response import Response
@@ -451,18 +451,8 @@ class VoiceCreateView(APIView):
                 {"error": f"목소리 메타데이터 생성 중 오류가 발생했습니다: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
-class VoiceCloneView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        return Response(
-            {"error": "음성 클로닝 기능은 현재 서버 환경에서 지원되지 않습니다."},
-            status=501
-        )
 
 
-        """
 class VoiceCloneView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -558,7 +548,7 @@ class VoiceCloneView(APIView):
             for path in [tmp_ref_path, output_path, se_path]:
                 if path and os.path.exists(path):
                     os.remove(path)
-"""
+
 
 class VoiceDetailView(APIView):
     """
