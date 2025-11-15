@@ -1,6 +1,6 @@
 import os
 import boto3
-import torch
+# import torch
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.response import Response
