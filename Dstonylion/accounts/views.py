@@ -287,7 +287,7 @@ class ChildActivateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, child_id):
-        try:
+        
             user = request.user
 
             # 본인 자녀만 활성화 가능
@@ -314,11 +314,6 @@ class ChildActivateView(APIView):
                 status=status.HTTP_200_OK
             )
 
-        except Exception as e:
-            return Response(
-                {"error": f"아이 활성화 중 오류가 발생했습니다: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
         
 class ChildDetailView(APIView):
@@ -388,8 +383,8 @@ class ChildUpdateView(APIView):
                 child.birth = data["birth_date"]
             if "gender" in data:
                 child.gender = data["gender"]
-            if "avatar_code" in data:
-                user.avatar_code = data["avatar_code"]
+            if "child_image_code" in data:
+                child.child_image_code = data["child_image_code"]
 
             child.save()
 
@@ -417,7 +412,6 @@ class VoiceCreateView(APIView):
         try:
             user = request.user
             data = request.data
-
             voice_name = data.get("voice_name")
             voice_image_code = data.get("voice_image_code", "voice1")
 
@@ -440,6 +434,7 @@ class VoiceCreateView(APIView):
             voice = ClonedVoice.objects.create(
                 user=user,
                 voice_name=voice_name,
+                voice_image_code=voice_image_code, 
                 created_at=timezone.now(),
             )
 
@@ -586,6 +581,20 @@ class VoiceDetailView(APIView):
         try:
             user = request.user
             data = request.data
+            # 수정 가능한 필드 목록
+            allowed_fields = {"voice_name", "voice_image_code"}
+
+            # 허용되지 않은 필드가 들어오면 에러 반환
+            invalid_fields = set(data.keys()) - allowed_fields
+            if invalid_fields:
+                return Response(
+                    {
+                        "error": f"유효하지 않은 필드입니다: {', '.join(invalid_fields)}. "
+                                f"허용된 필드는 voice_name, voice_image_code 입니다."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
             voice = ClonedVoice.objects.get(id=voice_id, user=user)
 
             if "voice_name" in data:
@@ -617,7 +626,7 @@ class VoiceDetailView(APIView):
                 "s3",
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_REGION,
+                region_name=settings.AWS_S3_REGION_NAME,
             )
 
             bucket_name = settings.AWS_STORAGE_BUCKET_NAME
@@ -701,3 +710,22 @@ class VoiceListView(APIView):
                 {"error": "목소리 리스트를 불러오는 중 오류가 발생했습니다."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+class ChildrenListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # 사용자 아이 목록 가져오기
+        children = user.children.all()
+
+        result = []
+        for child in children:
+            result.append({
+                "child_id": child.id,
+                "name": child.name,
+                "is_active": child.is_active
+            })
+
+        return Response({"children": result}, status=status.HTTP_200_OK)

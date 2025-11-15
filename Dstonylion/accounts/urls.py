@@ -17,4 +17,5 @@ urlpatterns = [
     path("voice/", VoiceCreateView.as_view(), name="voice-create"),
     path("voice/<int:voice_id>/", VoiceDetailView.as_view(), name="voice-detail"),
     path("voice/clone/", VoiceCloneView.as_view(), name="user-voice-clone"),
+    path("children/", ChildrenListView.as_view(), name="children-list"),
 ]

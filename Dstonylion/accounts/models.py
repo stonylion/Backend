@@ -32,7 +32,7 @@ class Child(models.Model):
     
 class ClonedVoice(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cloned_voices")
-    voice_name = models.CharField(max_length=255)
+    voice_name = models.CharField(max_length=255, null=True, blank=True)
     reference_audio_url = models.URLField(null=True, blank=True)
     voice_image_code = models.CharField(max_length=50)
     se_file = models.FileField(upload_to="cloned_se/", null=True, blank=True)  # 사용자의 음색 벡터 파일
