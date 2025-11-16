@@ -10,6 +10,7 @@ urlpatterns = [
     path('generate/', StoryGenerateView.as_view()),
     path('', StoryListView.as_view()),
     path('reset/', StoryResetView.as_view()),
+    path("user/voice/tts/", ClonedVoiceTTSView.as_view(), name="cloned-voice-tts"),
 
     #path('api/illustration/regenerate/', IllustrationRegenerateView.as_view(), name='illustration-regenerate'),
     #path('generate/illustrations/', StoryJsonImportView.as_view()),
