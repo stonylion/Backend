@@ -38,7 +38,6 @@ SECRET_KEY = 'django-insecure-jd)-tbus3q3(2rhg-kw8!co97d&(f4cmafgdxz!c*17k85+)cp
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
-ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -86,6 +85,8 @@ REST_FRAMEWORK = {
 
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -94,6 +95,10 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ORIGIN_ALLON_ALL=True
+
+
 
 ROOT_URLCONF = 'stonylion.urls'
 

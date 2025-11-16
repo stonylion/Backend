@@ -14,7 +14,6 @@ from django.core.files import File
 from django.utils import timezone
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-# from story.services.openvoice_service import clone_voice
 
 from mylibrary.models import Library
 from story.models import Story, Illustrations
@@ -452,7 +451,7 @@ class VoiceCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-
+'''
 class VoiceCloneView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -548,7 +547,7 @@ class VoiceCloneView(APIView):
             for path in [tmp_ref_path, output_path, se_path]:
                 if path and os.path.exists(path):
                     os.remove(path)
-
+'''
 
 class VoiceDetailView(APIView):
     """
