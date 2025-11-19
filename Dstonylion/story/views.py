@@ -554,9 +554,8 @@ class StoryPageListView(APIView):
                 user=request.user,
                 story=story,
             )
-            print("created:", created)
-            lib.last_viewed_time = timezone.now()
-            lib.save()
+            if created:
+                lib.save()
 
         pages = StoryPage.objects.filter(story=story).order_by("page_number")
         serializer = StoryPageSerializer(pages, many=True)

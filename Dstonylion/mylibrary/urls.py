@@ -5,4 +5,5 @@ urlpatterns = [
     path("recentread/", RecentReadView.as_view()),
     path("recentgenerated/", RecentGeneratedView.as_view()),
     path("<int:library_id>/", LibraryDetailView.as_view()),
+    path("last-viewed/",LastPageView.as_view())
 ]
