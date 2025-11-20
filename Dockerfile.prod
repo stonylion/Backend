@@ -30,10 +30,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip
 
-RUN pip install faster-whisper==1.2.1 --no-cache-dir
-RUN pip install openai-whisper --no-cache-dir
-RUN pip install whisper-timestamped==1.14.2 --no-cache-dir
-
 RUN pip install -r requirements.txt
 
 # -----------------------
