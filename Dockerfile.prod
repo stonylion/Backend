@@ -35,18 +35,6 @@ RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/to
 RUN pip install -r requirements.txt
 
 # -----------------------
-# clone & install MeloTTS
-# -----------------------
-RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS
-RUN pip install -e /app/MeloTTS
-
-# -----------------------
-# clone & install OpenVoice
-# -----------------------
-RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice
-RUN pip install -e /app/OpenVoice
-
-# -----------------------
 # copy project files
 # -----------------------
 COPY . .
