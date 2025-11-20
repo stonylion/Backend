@@ -11,12 +11,9 @@ FROM python:3.10-slim AS base
 RUN apt-get update && apt-get install -y \
     git \
     ffmpeg \
-    build-essential \
     curl \
     mecab \
     libmecab-dev \
-    mecab-ipadic-utf8 \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # -----------------------
