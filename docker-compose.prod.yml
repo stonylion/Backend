@@ -10,6 +10,9 @@ services:
     volumes:
       - static:/app/staticfiles
       - media:/app/media
+      - /home/ubuntu/MeloTTS:/app/MeloTTS
+      - /home/ubuntu/OpenVoice:/app/OpenVoice
+      - /home/ubuntu/models:/app/checkpoints_v2
     expose:
       - 8000
     working_dir: /app/Dstonylion
@@ -23,6 +26,9 @@ services:
     container_name: asgi
     image: stonylion_backend:latest
     working_dir: /app/Dstonylion
+    entrypoint:
+      - sh
+      - /app/config/docker/entrypoint.prod.sh
     command: daphne -b 0.0.0.0 -p 8001 stonylion.asgi:application
     env_file:
       - .env
@@ -33,6 +39,9 @@ services:
     volumes:
       - static:/app/staticfiles
       - media:/app/media
+      - /home/ubuntu/MeloTTS:/app/MeloTTS
+      - /home/ubuntu/OpenVoice:/app/OpenVoice
+      - /home/ubuntu/models:/app/checkpoints_v2
 
   nginx:
     container_name: nginx
