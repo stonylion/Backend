@@ -33,4 +33,4 @@ docker compose version
 # Docker Compose로 서버 빌드 및 실행 (docker-compose.prod.yml 사용)
 echo "start docker-compose up: ubuntu"
 cd /home/ubuntu/srv/ubuntu
-sudo docker-compose -f docker-compose.prod.yml up --build -d
+sudo docker compose -f docker-compose.prod.yml up --build -d
