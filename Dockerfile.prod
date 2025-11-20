@@ -1,29 +1,46 @@
 FROM python:3.10-slim
 
+# ===== System Dependencies =====
 RUN apt-get update && apt-get install -y \
-    default-libmysqlclient-dev \
     build-essential \
     pkg-config \
     git \
-    ffmpeg \
     curl \
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libpostproc-dev \
+    default-libmysqlclient-dev \
     libmecab-dev \
+    mecab-ipadic-utf8 \
     && rm -rf /var/lib/apt/lists/*
 
-# 앱 전체가 /app 에 복사됨
+# ===== Workdir =====
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
 
+# ===== Python =====
 RUN pip install --upgrade pip
+
+# PyTorch CPU
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
+# OpenVoice 요구: numpy==1.22.0 미리 설치
+RUN pip install numpy==1.22.0
+
+# 기본 requirements 설치
 RUN pip install -r requirements.txt
 
+# ===== Copy project =====
 COPY . /app
 
-# Django 프로젝트 root는 /app/Dstonylion
+# ===== Django root =====
 WORKDIR /app/Dstonylion
 
 CMD ["gunicorn", "stonylion.wsgi:application", "--bind", "0.0.0.0:8000"]
