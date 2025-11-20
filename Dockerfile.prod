@@ -1,0 +1,64 @@
+###########
+# BUILDER #
+###########
+
+# pull official base image
+FROM python:3.10-slim AS base
+
+# -----------------------
+# system dependencies
+# -----------------------
+RUN apt-get update && apt-get install -y \
+    git \
+    ffmpeg \
+    build-essential \
+    curl \
+    mecab \
+    libmecab-dev \
+    mecab-ipadic-utf8 \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# -----------------------
+# workdir
+# -----------------------
+WORKDIR /app
+
+# -----------------------
+# install python deps
+# -----------------------
+COPY requirements.txt .
+RUN pip install --upgrade pip
+
+RUN pip install faster-whisper==1.2.1
+RUN pip install openai-whisper==20250625
+RUN pip install whisper-timestamped==1.14.2
+
+RUN pip install -r requirements.txt
+
+# -----------------------
+# clone & install MeloTTS
+# -----------------------
+RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS
+RUN pip install -e /app/MeloTTS
+
+# -----------------------
+# clone & install OpenVoice
+# -----------------------
+RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice
+RUN pip install -e /app/OpenVoice
+
+# -----------------------
+# copy project files
+# -----------------------
+COPY . .
+
+# -----------------------
+# expose port
+# -----------------------
+EXPOSE 8000
+
+# -----------------------
+# gunicorn run
+# -----------------------
+CMD ["gunicorn", "Dstonylion.stonylion.wsgi:application", "--bind", "0.0.0.0:8000"]
