@@ -8,6 +8,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth import get_user_model
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+from urllib.parse import parse_qs
 
 User = get_user_model()
 
@@ -34,17 +35,21 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
     # -------------------------------
     async def connect(self):
         try:
-            headers = dict(self.scope["headers"])
-            auth_header = headers.get(b"authorization")
+            await self.accept()
 
-            if not auth_header:
-                raise ValueError("인증 헤더 없음")
+            # QUERY STRING 파싱
+            query_string = self.scope["query_string"].decode()
+            qs = parse_qs(query_string)
+            token_list = qs.get("token", [])
 
-            # Authorization: <token>  ← Bearer 없음
-            token_str = auth_header.decode().strip()
-            token = AccessToken(token_str)
-            user_id = token["user_id"]
+            if not token_list:
+                raise ValueError("토큰 없음")
 
+            token_str = token_list[0]
+            access = AccessToken(token_str)
+            user_id = access["user_id"]
+
+            # User 객체 로드
             self.scope["user"] = await self.get_user_from_token(user_id)
             if not self.scope["user"]:
                 raise ValueError("유효하지 않은 사용자")
@@ -53,35 +58,25 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
 
             # Redis 연결
             self.redis = redis.StrictRedis(
-                host=getattr(settings, "REDIS_HOST", "localhost"),
-                port=getattr(settings, "REDIS_PORT", 6379),
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
                 db=0,
                 decode_responses=True,
             )
-
             self.redis_draft_key = f"draft:{self.user.id}"
 
             # 상태
             self.paused = False
-            self.audio_chunks = []
 
-            await self.accept()
             await self.send_json({"message": "🟢 STT 연결 성공"})
-
-        except ValueError as e:
-            await self.send_json({'error_message': str(e)})
-            await self.close()
 
         except Exception as e:
             await self.send_json({'error_message': f"인증 오류: {str(e)}"})
             await self.close()
 
 
-    # -------------------------------
-    # 🔌 DISCONNECT
-    # -------------------------------
     async def disconnect(self, close_code):
-        pass   # ChatConsumer도 특별한 로직 없음 → 동일하게 유지
+        pass
 
 
     # -------------------------------
@@ -132,13 +127,15 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
                     await self.send_json({"status": "text_saved"})
                     return
 
-            # 오디오 chunk 처리
+            # -------------------------------
+            # 🎤 음성 chunk 수신 (async Whisper)
+            # -------------------------------
             if bytes_data and not self.paused:
+
                 temp_path = await self._save_temp_audio(bytes_data)
 
                 try:
-                    loop = asyncio.get_event_loop()
-                    text = await loop.run_in_executor(None, self.transcribe_audio, temp_path)
+                    text = await self.transcribe_audio_async(temp_path)
                     clean = self._normalize_text(text)
 
                     if clean:
@@ -164,14 +161,14 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
 
 
     # -------------------------------
-    # 🧠 Whisper STT
+    # 🧠 Whisper STT (완전 async-await 방식)
     # -------------------------------
-    def transcribe_audio(self, filepath):
+    async def transcribe_audio_async(self, filepath):
         with open(filepath, "rb") as f:
-            result = client.audio.transcriptions.create(
+            result = await client.audio.transcriptions.create(
                 model="whisper-1",
                 file=f,
-                language="ko"
+                language="ko",
             )
         return result.text.strip()
 
@@ -209,6 +206,8 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
     async def _save_temp_audio(self, chunk_bytes):
         fd, temp_path = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
+
         async with aiofiles.open(temp_path, "wb") as f:
             await f.write(chunk_bytes)
+
         return temp_path

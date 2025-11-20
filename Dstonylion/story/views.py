@@ -513,52 +513,37 @@ class ClonedVoiceTTSView(APIView):
             print("🔥 [TTS ERROR TRACEBACK END] 🔥")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-class StoryStyleSelectView(APIView):
-    """
-    사용자가 동화의 삽화 스타일을 선택하는 API
-    """
-
+class IllustrationStyleView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        story_id = request.data.get("story_id")
+    def post(self, request, story_id):
         style = request.data.get("style")
 
-        # 필수 값 확인
-        if not story_id or not style:
-            return Response(
-                {"error": "story_id와 style은 필수 입력값입니다."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 유효한 스타일 목록 (명세에 따라 사전 정의)
-        valid_styles = ["수채화", "연필화", "유화", "디지털", "동양화", "파스텔"]
-
-        if style not in valid_styles:
+        if style not in ["watercolor", "oil", "crayon", "3d"]:
             return Response(
                 {"error": "유효하지 않은 스타일입니다."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 스토리 조회
         try:
             story = Story.objects.get(id=story_id, user=request.user)
         except Story.DoesNotExist:
             return Response(
-                {"error": "해당 스토리를 찾을 수 없습니다."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "스토리를 찾을 수 없거나 권한이 없습니다."},
+                status=status.HTTP_404_NOT_FOUND
             )
 
-        # 선택한 스타일 저장
-        story.status = "style_selected"
+        # 스타일 저장
+        story.illustration_style = style
         story.save()
 
-        # 삽화 스타일을 별도로 저장하고 싶으면 Redis나 별도 테이블 사용 가능
-        # 예시: story.illustrations.update(style=style) 도 가능
-
         return Response(
-            {"message": f"선택된 스타일: {style}"},
+            {
+                "story_id": story.id,
+                "style": style,
+                "message": "삽화 스타일이 저장되었습니다."
+            },
             status=status.HTTP_200_OK
         )
     

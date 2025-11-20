@@ -17,6 +17,12 @@ class Story(models.Model):
         ("custom", "제작동화"),
         ("extended", "확장동화"),
     ]
+    STYLE_CHOICES = [
+        ("watercolor", "수채화"), 
+        ("oil", "유화"), 
+        ("crayon", "크레파스"),
+        ("3d", "3D 애니메이션")
+    ]
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stories")
     child = models.ForeignKey(Child, on_delete=models.CASCADE, blank=True, null=True, related_name="stories")
@@ -27,10 +33,12 @@ class Story(models.Model):
     cover = models.ImageField(upload_to='stories/', null=True)
     content = models.TextField()
 
+    illustration_style = models.CharField(max_length=50, choices=STYLE_CHOICES, null=True, blank=True)
     page_count = models.IntegerField(default=0)
     runtime = models.CharField(max_length=50, null=True, blank=True)
     age_group = models.CharField(max_length=50, null=True, blank=True)
     category = models.CharField (max_length=20, choices=CATEGORY_CHOICES, default="classic")
+    
 
     morals = models.ManyToManyField(MoralTheme, related_name="stories", blank=True)
 
@@ -53,7 +61,6 @@ class Illustrations(models.Model):
     story_page = models.ForeignKey(StoryPage, on_delete=models.CASCADE, related_name="illustrations")
     image = models.ImageField(upload_to='illustrations/')
     prompt = models.TextField()
-    style = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
 
     def __str__(self):

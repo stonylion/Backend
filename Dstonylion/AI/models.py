@@ -4,9 +4,17 @@ from accounts.models import *
 from story.models import *
 from django.utils import timezone
 from story.models import Story, StoryPage
-# Create your models here.
+
 class IllustrationJob(models.Model):
+    STYLE_CHOICES = [
+        ("watercolor", "수채화"), 
+        ("oil", "유화"), 
+        ("crayon", "크레파스"),
+        ("3d", "3D 애니메이션")
+    ]
+    
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="ai_jobs")
+    style = models.CharField(max_length=50, choices=STYLE_CHOICES, null=True, blank=True)
     status = models.CharField(max_length=20, default="PENDING")  # PENDING, RUNNING, SUCCESS, FAILED
     total_pages = models.PositiveIntegerField(default=0)
     completed_pages = models.PositiveIntegerField(default=0)

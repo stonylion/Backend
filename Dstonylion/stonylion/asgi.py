@@ -16,12 +16,14 @@ from story import routing as story_routing
 #application = get_asgi_application()
 
 application = ProtocolTypeRouter({
-    "http": django_asgi_app,
-    "websocket": AuthMiddlewareStack(
-        URLRouter(
-            ai_routing.websocket_urlpatterns +
-            story_routing.websocket_urlpatterns
+        "http": django_asgi_app,
+        "websocket": AllowedHostsOriginValidator(
+        AuthMiddlewareStack(
+            URLRouter(
+                ai_routing.websocket_urlpatterns +
+                story_routing.websocket_urlpatterns
+            )
         )
-    ),
+    )
 })
 

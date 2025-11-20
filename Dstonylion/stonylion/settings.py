@@ -115,6 +115,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'stonylion.wsgi.application'
 ASGI_APPLICATION = 'stonylion.asgi.application'
 
+# redis
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+
 CHANNEL_LAYERS = {
     'default' : {
         'BACKEND' : 'channels_redis.core.RedisChannelLayer',
@@ -134,20 +138,28 @@ CACHES = {
         }
     }
 }
-# AWS elasticache
-'''
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://storylion-redis.xxxxxx.ng.0001.apne2.cache.amazonaws.com:6379/0",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "PASSWORD": "",  # 암호 넣지 않은 구성
+# redis prod 버전
+"""
+CHANNEL_LAYERS = {
+    'default' : {
+        'BACKEND' : 'channels_redis.core.RedisChannelLayer',
+        'CONFIG' : {
+            "hosts" : [(REDIS_HOST, REDIS_PORT)]
         }
     }
 }
-'''
-
+"""
+"""
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/0",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+"""
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -230,10 +242,6 @@ DEFAULT_FILE_STORAGE = "stonylion.storages.MediaStorage"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-from django.core.files.storage import storages
-from stonylion.storages import MediaStorage
-
-storages._storages["default"] = MediaStorage()
 from django.core.files.storage import storages
 from stonylion.storages import MediaStorage
 
