@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     libmecab-dev \
     && rm -rf /var/lib/apt/lists/*
-    
 
 # 앱 전체가 /app 에 복사됨
 WORKDIR /app
