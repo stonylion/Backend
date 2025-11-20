@@ -1,13 +1,10 @@
-version: "3"
 services:
   web:
     container_name: web
     image: stonylion_backend:latest
     build:
-      context: ./
+      context: .
       dockerfile: Dockerfile.prod
-    environment:
-      DJANGO_SETTINGS_MODULE: Dstonylion.stonylion.settings
     env_file:
       - .env
     volumes:
@@ -15,38 +12,38 @@ services:
       - media:/app/media
     expose:
       - 8000
+    working_dir: /app/Dstonylion
     entrypoint:
       - sh
       - /app/config/docker/entrypoint.prod.sh
+    environment:
+      DJANGO_SETTINGS_MODULE: stonylion.settings
 
   asgi:
     container_name: asgi
     image: stonylion_backend:latest
-    command: daphne -b 0.0.0.0 -p 8001 Dstonylion.stonylion.asgi:application
+    working_dir: /app/Dstonylion
+    command: daphne -b 0.0.0.0 -p 8001 stonylion.asgi:application
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: Dstonylion.stonylion.settings
+      DJANGO_SETTINGS_MODULE: stonylion.settings
+    depends_on:
+      - web
     volumes:
       - static:/app/staticfiles
       - media:/app/media
-    expose:
-      - 8001
-    depends_on:
-      - web
 
   nginx:
     container_name: nginx
     build: ./config/nginx
-    volumes:
-      - static:/app/staticfiles
-      - media:/app/media
     ports:
       - "80:80"
     depends_on:
       - web
-    environment:
-      TZ: "Asia/Seoul"
+    volumes:
+      - static:/app/staticfiles
+      - media:/app/media
 
 volumes:
   static:
