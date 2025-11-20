@@ -18,13 +18,11 @@ services:
     entrypoint:
       - sh
       - /app/config/docker/entrypoint.prod.sh
-    working_dir: /app/Dstonylion
 
   asgi:
     container_name: asgi
     image: stonylion_backend:latest
-    command: daphne -b 0.0.0.0 -p 8001 stonylion.asgi:application
-    working_dir: /app/Dstonylion
+    command: daphne -b 0.0.0.0 -p 8001 Dstonylion.stonylion.asgi:application
     env_file:
       - .env
     environment:
