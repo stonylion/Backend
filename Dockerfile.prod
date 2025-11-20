@@ -1,11 +1,15 @@
 FROM python:3.10-slim
 
 RUN apt-get update && apt-get install -y \
+    default-libmysqlclient-dev \
+    build-essential \
+    pkg-config \
     git \
     ffmpeg \
     curl \
     libmecab-dev \
     && rm -rf /var/lib/apt/lists/*
+    
 
 # 앱 전체가 /app 에 복사됨
 WORKDIR /app
