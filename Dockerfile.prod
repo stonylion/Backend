@@ -1,13 +1,5 @@
-###########
-# BUILDER #
-###########
-
-# pull official base image
 FROM python:3.10-slim AS base
 
-# -----------------------
-# system dependencies
-# -----------------------
 RUN apt-get update && apt-get install -y \
     git \
     ffmpeg \
@@ -15,32 +7,20 @@ RUN apt-get update && apt-get install -y \
     libmecab-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# -----------------------
-# workdir
-# -----------------------
 WORKDIR /app
 
-# -----------------------
-# install python deps
-# -----------------------
 COPY requirements.txt .
+
 RUN pip install --upgrade pip
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
 RUN pip install -r requirements.txt
 
-# -----------------------
-# copy project files
-# -----------------------
-COPY . .
+COPY . /app
 
-# -----------------------
-# expose port
-# -----------------------
+WORKDIR /app/Dstonylion
+
 EXPOSE 8000
 
-# -----------------------
-# gunicorn run
-# -----------------------
-CMD ["gunicorn", "Dstonylion.stonylion.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "stonylion.wsgi:application", "--bind", "0.0.0.0:8000"]
