@@ -1,13 +1,12 @@
-version: '3'
+version: "3"
 services:
-
-	# Django 웹 애플리케이션을 실행
+  # Django 웹 애플리케이션을 실행
   web:
     container_name: web
     image: stonylion_backend:latest
     build:
       context: ./
-      dockerfile: Dockerfile.prod    # Dockerfile.prod를 사용해 이미지를 빌드
+      dockerfile: Dockerfile.prod # Dockerfile.prod를 사용해 이미지를 빌드
     environment: # settings.prod를 설정 모듈로 설정
       DJANGO_SETTINGS_MODULE: Dstonylion.stonylion.settings
     env_file:
@@ -20,14 +19,14 @@ services:
     # 컨테이너가 시작될 때 entrypoint.prod.sh 스크립트를 실행하여 초기화 작업을 수행
     entrypoint:
       - sh
-      - /app/config/docker/entrypoint.prod.sh 
+      - /app/config/docker/entrypoint.prod.sh
 
   asgi: # WebSocket 서버
     container_name: asgi
-    image: stonylion_backend:latest 
+    image: stonylion_backend:latest
     command: daphne -b 0.0.0.0 -p 8001 Dstonylion.stonylion.asgi:application
     env_file:
-    - .env
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: Dstonylion.stonylion.settings
     volumes:
@@ -38,17 +37,17 @@ services:
     depends_on:
       - web
 
-	# Nginx를 사용하여 웹 서버를 설정, Django 애플리케이션에 대한 요청을 처리
+  # Nginx를 사용하여 웹 서버를 설정, Django 애플리케이션에 대한 요청을 처리
   nginx:
     container_name: nginx
     # ./config/nginx의 Dockerfile을 사용해 Nginx 이미지를 빌드
-    build: ./config/nginx  
+    build: ./config/nginx
     volumes:
-      - static:/app/staticfiles  # Nginx가 정적 파일을 제공할 수 있도록 설정
-      - media:/app/media    # 미디어 파일을 제공할 수 있도록 설정
+      - static:/app/staticfiles # Nginx가 정적 파일을 제공할 수 있도록 설정
+      - media:/app/media # 미디어 파일을 제공할 수 있도록 설정
     ports:
-      - "80:80" 
-      # 호스트의 80 포트를 컨테이너의 80 포트에 매핑하여 
+      - "80:80"
+      # 호스트의 80 포트를 컨테이너의 80 포트에 매핑하여
       # Nginx가 HTTP 요청을 수신할 수 있도록 함
     depends_on:
       - web
