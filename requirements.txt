@@ -45,7 +45,9 @@ python-dotenv==1.2.1
 PyYAML==6.0.3
 redis==7.0.1
 referencing==0.37.0
+tokenizers==0.13.3
 requests==2.32.5
+onnxruntime==1.23.2
 rich==13.9.4
 s3transfer==0.14.0
 soundfile==0.13.1
@@ -62,3 +64,4 @@ pypinyin==0.50.0
 numpy==1.26.4
 aiofiles==23.2.1
 gunicorn==21.2.0
+ctranslate2==4.6.1
