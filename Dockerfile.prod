@@ -7,8 +7,15 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     git \
     curl \
-    ffmpeg \
     unzip \
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libavdevice-dev \
+    libavfilter-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
     mecab \
     libmecab-dev \
     mecab-ipadic-utf8 \
