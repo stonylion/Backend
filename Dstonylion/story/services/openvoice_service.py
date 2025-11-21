@@ -20,6 +20,30 @@ _tts_cache = {}
 _tone_converter = None
 
 
+def clone_voice(source_audio_path, reference_audio_path, base_speaker_se_path, output_path):
+    from openvoice import se_extractor
+
+    # ToneColorConverter 로드
+    converter = get_tone_converter()
+
+    # reference audio → target SE
+    target_se, _ = se_extractor.get_se(reference_audio_path, converter, vad=True)
+
+    # base speaker SE 로드
+    source_se = torch.load(base_speaker_se_path, map_location=device)
+
+    # 변환 수행
+    converter.convert(
+        audio_src_path=source_audio_path,
+        src_se=source_se,
+        tgt_se=target_se,
+        output_path=output_path,
+        message="@MyShell"
+    )
+
+    return output_path, target_se
+
+
 def get_tts(language: str):
     """TTS 모델을 1번만 로드해서 캐싱."""
     from melo.api import TTS
