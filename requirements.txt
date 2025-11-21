@@ -56,6 +56,5 @@ tzdata==2025.2
 urllib3==2.5.0
 uvicorn==0.38.0
 websockets==11.0.3
-unidic 
-unidic-lite
 mecab-python3
+unidic 

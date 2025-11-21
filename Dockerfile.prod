@@ -35,6 +35,9 @@ RUN pip install numpy==1.22.0
 RUN pip install -r requirements.txt
 
 # ===== MeCab UniDic =====
+RUN pip install mecab-python3 unidic
+
+# ===== MeCab UniDic =====
 # UniDic 다운로드
 RUN python -m unidic download
 
