@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     ffmpeg \
+    unzip \
     mecab \
     libmecab-dev \
     mecab-ipadic-utf8 \
@@ -33,6 +34,8 @@ RUN pip install numpy==1.22.0
 
 # 기본 requirements
 RUN pip install -r requirements.txt
+
+RUN pip uninstall -y unidic_lite || true
 
 # ===== UniDic download =====
 RUN python3 -m unidic download
