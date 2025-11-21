@@ -23,8 +23,6 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/powershell
           sudo apt-get clean
-          docker system prune -af || true
-          docker builder prune -af || true
           df -h
 
       - name: checkout
