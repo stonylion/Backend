@@ -20,10 +20,6 @@ from story.utils import split_into_pages
 from dotenv import load_dotenv
 from django.utils.text import slugify
 
-from melo.api import TTS
-from story.services.openvoice_service import generate_tts
-from story.services.openvoice_service import tone_color_converter
-
 load_dotenv(settings.BASE_DIR/ ".env")
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -56,7 +52,7 @@ class StoryOptionSaveView(APIView):
             db=0,
             decode_responses=True,
         )
-        redis_client.hmset(f"story_option:{request.user.id}", {"runtime": runtime, "age_group": age_group})
+        redis_client.hset(f"story_option:{request.user.id}", mapping={"runtime": runtime, "age_group": age_group})
 
         return Response({"next": "/story/record/"}, status=status.HTTP_200_OK)
     
@@ -405,7 +401,6 @@ class StoryResetView(APIView):
             "message": "스토리 생성 흐름 데이터가 초기화되었습니다."
         }, status=200)
 
-
 class ClonedVoiceTTSView(APIView):
     """
     이미 클로닝된 사용자의 SE 벡터를 이용해
@@ -417,8 +412,14 @@ class ClonedVoiceTTSView(APIView):
     BASE_SPEAKER_SE = os.path.join(BASE_DIR, "checkpoints_v2", "base_speakers", "ses", "kr.pth")
     BASE_SPEAKER_AUDIO = os.path.join(BASE_DIR, "checkpoints_v2", "base_speakers", "base_ko.wav")
 
-
     def post(self, request):
+        from story.services.openvoice_service import (
+            get_tts,
+            get_tone_converter,
+            extract_se,
+            convert_voice,
+        )
+
         try:
             data = request.data
             title = data.get("title")
@@ -426,7 +427,7 @@ class ClonedVoiceTTSView(APIView):
             pages = data.get("pages")
 
             # 1️⃣ 유효성 검사
-            if not all([title, author, pages]):
+            if not title or not author or not pages:
                 return Response(
                     {"error": "title, author, pages 필드가 모두 필요합니다."},
                     status=status.HTTP_400_BAD_REQUEST
@@ -440,78 +441,101 @@ class ClonedVoiceTTSView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 3️⃣ SE 벡터 로드
+            # 3️⃣ SE 벡터 로드 (사용자 reference + base_speaker)
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+            # 사용자 reference_se
             with default_storage.open(cloned.se_file.name, "rb") as f:
                 reference_se = torch.load(f, map_location=device)
+
+            # dict 형태로 저장됐을 경우 처리
+            if isinstance(reference_se, dict):
+                reference_se = reference_se.get("se") or reference_se.get("speaker_embed")
+
+
+            # base_speaker_se
             base_se = torch.load(self.BASE_SPEAKER_SE, map_location=device)
 
-            # 4️⃣ MeloTTS 초기화
-            tts = TTS(language="KR", device=device)
-            print("✅ Model loaded:", hasattr(tts, "model"))
-            print("✅ Speakers:", tts.hps.data.spk2id if hasattr(tts, "hps") else None)
+            # 4️⃣ TTS 모델 로딩 (lazy-load)
+            tts = get_tts("KR")
             speaker_id = list(tts.hps.data.spk2id.values())[0]
+
             os.makedirs("outputs_v2", exist_ok=True)
 
             tts_urls = []
 
             # 5️⃣ 제목 + 작가 오디오 생성
             intro_text = f"제목, {title}. 지은이, {author}."
+
             base_intro_path = os.path.join("outputs_v2", f"{request.user.id}_intro_base.wav")
             cloned_intro_path = os.path.join("outputs_v2", f"{request.user.id}_intro_clone.wav")
 
-            # 기본 화자로 TTS
+            # 기본 화자 TTS
             tts.tts_to_file(intro_text, speaker_id, base_intro_path, speed=1.0)
 
-            # 사용자 화자 음색으로 변환
-            tone_color_converter.convert(
-                audio_src_path=base_intro_path,
-                src_se=base_se,
-                tgt_se=reference_se,
-                output_path=cloned_intro_path,
-                message="@MyShell"
+            # 음색 변환
+            convert_voice(
+                base_intro_path,
+                reference_se,
+                cloned_intro_path,
+                base_se
             )
 
             with open(cloned_intro_path, "rb") as f:
-                s3_path = default_storage.save(f"tts_outputs/{request.user.id}_intro_clone.wav", File(f))
+                s3_path = default_storage.save(
+                    f"tts_outputs/{request.user.id}_intro_clone.wav", File(f)
+                )
                 tts_urls.append(default_storage.url(s3_path))
 
-            # 6️⃣ 각 페이지별 오디오 생성
+            # 메모리 정리
+            os.remove(cloned_intro_path)
+            os.remove(base_intro_path)
+
+            # 6️⃣ 페이지 오디오 생성
             for page in pages:
                 page_text = page.get("text")
                 page_num = page.get("page")
+
                 if not page_text:
                     continue
 
                 base_path = os.path.join("outputs_v2", f"{request.user.id}_page_{page_num}_base.wav")
                 clone_path = os.path.join("outputs_v2", f"{request.user.id}_page_{page_num}_clone.wav")
 
+                # 기본 화자로 TTS 생성
                 tts.tts_to_file(page_text, speaker_id, base_path, speed=1.0)
 
-                tone_color_converter.convert(
-                    audio_src_path=base_path,
-                    src_se=base_se,
-                    tgt_se=reference_se,
-                    output_path=clone_path,
-                    message="@MyShell"
+                # 음색 변환
+                convert_voice(
+                    base_path,
+                    reference_se,
+                    clone_path,
+                    base_se
                 )
 
+                # 업로드
                 with open(clone_path, "rb") as f:
-                    s3_path = default_storage.save(f"tts_outputs/{request.user.id}_page_{page_num}_clone.wav", File(f))
+                    s3_path = default_storage.save(
+                        f"tts_outputs/{request.user.id}_page_{page_num}_clone.wav",
+                        File(f)
+                    )
                     tts_urls.append(default_storage.url(s3_path))
 
+                # 로컬 파일 삭제
                 os.remove(base_path)
                 os.remove(clone_path)
 
-            # ✅ 응답 반환
-            return Response({"tts_audio_urls": tts_urls}, status=status.HTTP_200_OK)
+            return Response({"tts_audio_urls": tts_urls}, status=200)
 
         except Exception as e:
             import traceback
-            print("🔥 [TTS ERROR TRACEBACK START] 🔥")
+            print("🔥 [TTS ERROR TRACEBACK START]")
             print(traceback.format_exc())
-            print("🔥 [TTS ERROR TRACEBACK END] 🔥")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print("🔥 [TTS ERROR TRACEBACK END]")
+            return Response({"error": str(e)}, status=500)
+                                
+
+
 
 class IllustrationStyleView(APIView):
     permission_classes = [IsAuthenticated]
