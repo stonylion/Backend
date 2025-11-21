@@ -57,10 +57,12 @@ jobs:
 
       # 서버에 접속한 뒤 deploy.sh(배포 스크립트)를 실행
       - name: executing remote ssh commands using password
-        uses: appleboy/ssh-action@v0.1.7
+        uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ubuntu
           key: ${{ secrets.KEY }}
+          command_timeout: 120m
           script: |
-            sh /home/ubuntu/srv/ubuntu/config/scripts/deploy.sh
+            cd /home/ubuntu/srv/ubuntu
+            sh config/scripts/deploy.sh
