@@ -14,43 +14,33 @@ RUN apt-get update && apt-get install -y \
 
 # ===== Workdir =====
 WORKDIR /app
-
 COPY requirements.txt /app/requirements.txt
 
 # ===== Python =====
 RUN pip install --upgrade pip
 RUN pip install "Cython<3.0"
 
-# ---- faster-whisper: wheel 설치 시도 (실패해도 계속)
+# faster-whisper (optional)
 RUN pip install faster-whisper==0.9.0 --only-binary :all: || true
 
 # PyTorch CPU
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-# ---- OpenVoice 요구 numpy 버전 확보
+# OpenVoice numpy
 RUN pip install numpy==1.22.0
 
-# ---- 기본 requirements 설치
+# 기본 requirements
 RUN pip install -r requirements.txt
 
-# ===== MeCab UniDic =====
-RUN pip install mecab-python3 unidic
+# ===== MeCab + UniDic (정답) =====
+RUN pip install mecab-python3 unidic==1.1.0
 
-# ===== MeCab UniDic =====
-# UniDic 다운로드
-RUN python -m unidic download
-
-# 기존 dicdir 폴더 삭제 (심링크 충돌 방지)
-RUN rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir
-
-# UniDic이 설치된 실제 위치(/root/.local/share/unidic) → MeCab이 찾는 위치로 심링크
-RUN ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
+RUN python3 -m unidic download --dir /usr/local/lib/python3.10/site-packages/unidic/dicdir
 
 # ===== Copy project =====
 COPY . /app
 
 # ===== Django root =====
 WORKDIR /app/Dstonylion
-
-CMD ["bash"]
+CMD ["gunicorn", "stonylion.wsgi:application", "--bind", "0.0.0.0:8000"]
