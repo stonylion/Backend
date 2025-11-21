@@ -42,16 +42,6 @@ RUN pip install numpy==1.22.0
 # ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
-# ===== Install PyAV (FFmpeg binding) =====
-RUN pip install av==16.0.1 --only-binary :all:
-
-# ===== Install MeloTTS & OpenVoice =====
-RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
-    && pip install -e /app/MeloTTS
-
-RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice \
-    && pip install -e /app/OpenVoice
-
 # ===== Install UniDic into image (영구 설치) =====
 RUN pip install --no-cache-dir unidic \
     && python3 -m unidic download \
@@ -60,6 +50,18 @@ RUN pip install --no-cache-dir unidic \
 
 # ===== Remove unidic_lite if exists =====
 RUN pip uninstall -y unidic_lite || true
+
+
+  # ===== PyAV wheel 설치 (빌드 방지) =====
+RUN pip install av==16.0.1 --only-binary :all:
+
+# ===== Install MeloTTS & OpenVoice =====
+RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
+    && pip install --no-deps -e /app/MeloTTS
+
+# ===== OpenVoice 설치 =====
+RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice \
+    && pip install --no-build-isolation --no-deps -e /app/OpenVoice
 
 # ===== Copy project =====
 COPY . /app
