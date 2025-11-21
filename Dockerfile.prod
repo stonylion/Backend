@@ -48,6 +48,8 @@ RUN pip install librosa==0.10.0.post2 \
     scipy \
     python-magic \
     einops
+# ===== Text processing packages for MeloTTS =====
+RUN pip install num2words==0.5.12 dateparser==1.1.8
 
 RUN pip install transformers==4.39.3
 
