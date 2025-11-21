@@ -2,8 +2,6 @@
 import os
 import torch
 from django.conf import settings
-from melo.api import TTS
-from openvoice.api import ToneColorConverter
 from openvoice import se_extractor
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -25,6 +23,7 @@ _tone_converter = None
 
 def get_tts(language: str):
     """TTS 모델을 1번만 로드해서 캐싱."""
+    from melo.api import TTS
     if language not in _tts_cache:
         _tts_cache[language] = TTS(language=language, device=device)
     return _tts_cache[language]
@@ -34,6 +33,7 @@ def get_tone_converter():
     """ToneColorConverter 모델을 전역에서 1번만 로드."""
     global _tone_converter
     if _tone_converter is None:
+        from openvoice.api import ToneColorConverter
         config = os.path.join(_CONVERTER_DIR, "config.json")
         ckpt = os.path.join(_CONVERTER_DIR, "checkpoint.pth")
 
