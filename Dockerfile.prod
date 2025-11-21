@@ -34,7 +34,10 @@ RUN pip install "Cython<3.0"
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-RUN pip install --only-binary=:all: av==10.0.0
+# PyAV 설치 (wheel이 존재하는 가장 안정적인 버전)
+RUN pip install av==12.0.0
+
+# faster-whisper는 deps 없이 설치 (av 강제 설치 금지)
 RUN pip install faster-whisper==0.8.0 --no-deps
 
 # ===== Install base requirements =====
