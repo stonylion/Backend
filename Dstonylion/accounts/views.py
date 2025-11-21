@@ -1,6 +1,5 @@
 import os
 import boto3
-import torch
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.response import Response
@@ -513,6 +512,7 @@ class VoiceCloneView(APIView):
                 output_path=output_path
             )
             # SE 벡터 파일로 저장
+            import torch
             torch.save(target_se, se_path)
 
             # S3 업로드

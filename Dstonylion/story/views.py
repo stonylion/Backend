@@ -1,6 +1,5 @@
 import redis, random, os, json, re
 import openai
-import torch
 from django.conf import settings
 from django.core.files import File
 from django.shortcuts import render
@@ -442,6 +441,7 @@ class ClonedVoiceTTSView(APIView):
                 )
 
             # 3️⃣ SE 벡터 로드 (사용자 reference + base_speaker)
+            import torch
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
             # 사용자 reference_se

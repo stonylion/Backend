@@ -1,9 +1,15 @@
 # openvoice_service.py
 import os
-import torch
 from django.conf import settings
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+_device = None
+
+def get_device():
+    global _device
+    if _device is None:
+        import torch
+        _device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    return _device
 
 
 # -------------------------------------------------------------------
@@ -22,6 +28,9 @@ _tone_converter = None
 
 def clone_voice(source_audio_path, reference_audio_path, base_speaker_se_path, output_path):
     from openvoice import se_extractor
+    import torch
+
+    device = get_device()
 
     # ToneColorConverter 로드
     converter = get_tone_converter()
@@ -47,6 +56,7 @@ def clone_voice(source_audio_path, reference_audio_path, base_speaker_se_path, o
 def get_tts(language: str):
     """TTS 모델을 1번만 로드해서 캐싱."""
     from melo.api import TTS
+    device = get_device()
     if language not in _tts_cache:
         _tts_cache[language] = TTS(language=language, device=device)
     return _tts_cache[language]
@@ -57,6 +67,8 @@ def get_tone_converter():
     global _tone_converter
     if _tone_converter is None:
         from openvoice.api import ToneColorConverter
+        device = get_device()
+
         config = os.path.join(_CONVERTER_DIR, "config.json")
         ckpt = os.path.join(_CONVERTER_DIR, "checkpoint.pth")
 
@@ -100,8 +112,12 @@ def extract_se(reference_audio_path, base_se_path):
     사용자 참고 음성에서 SE 벡터 추출
     """
     from openvoice import se_extractor
-    converter = get_tone_converter()
-    target_se, _ = se_extractor.get_se(reference_audio_path, converter, vad=True)
+    import torch
 
+    device = get_device()
+    converter = get_tone_converter()
+
+    target_se, _ = se_extractor.get_se(reference_audio_path, converter, vad=True)
     base_se = torch.load(base_se_path, map_location=device)
+    
     return target_se, base_se
