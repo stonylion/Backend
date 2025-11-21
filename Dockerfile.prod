@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 
-# ===== Python =====
+# ===== Python Packages =====
 RUN pip install --upgrade pip
 RUN pip install "Cython<3.0"
 
@@ -29,24 +29,18 @@ RUN pip install faster-whisper==0.9.0 --only-binary :all: || true
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-# OpenVoice numpy
+# OpenVoice numpy fix
 RUN pip install numpy==1.22.0
 
 # 기본 requirements
 RUN pip install -r requirements.txt
 
+# 충돌 방지
 RUN pip uninstall -y unidic_lite || true
-
-# ===== UniDic download =====
-RUN python3 -m unidic download
-
-# ===== UniDic dicdir fix =====
-RUN rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir \
-    && ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
+RUN mkdir -p /usr/local/lib/python3.10/site-packages/unidic
 
 # ===== Copy project =====
 COPY . /app
 
-# ===== Django root =====
 WORKDIR /app/Dstonylion
-CMD ["bash"]
+# CMD 없음!!  (docker-compose가 entrypoint 담당)
