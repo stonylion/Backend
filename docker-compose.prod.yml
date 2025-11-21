@@ -49,7 +49,7 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - web
+      - asgi
     volumes:
       - static:/app/staticfiles
       - media:/app/media
