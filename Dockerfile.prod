@@ -35,6 +35,13 @@ RUN pip install numpy==1.22.0
 # ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
+# ===== Install MeloTTS & OpenVoice =====
+RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
+    && pip install -e /app/MeloTTS
+
+RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice \
+    && pip install -e /app/OpenVoice
+
 # ===== Install UniDic into image (영구 설치) =====
 RUN pip install --no-cache-dir unidic \
     && python3 -m unidic download \
@@ -46,6 +53,9 @@ RUN pip uninstall -y unidic_lite || true
 
 # ===== Copy project =====
 COPY . /app
+
+# ===== Copy models (checkpoint_v2) into image =====
+COPY checkpoints_v2 /app/checkpoints_v2
 
 # ===== Django root =====
 WORKDIR /app/Dstonylion
