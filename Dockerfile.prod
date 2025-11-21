@@ -34,8 +34,6 @@ RUN pip install "Cython<3.0"
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-RUN pip install --only-binary=:all: faster-whisper==0.8.0 || pip install faster-whisper==0.8.0
-
 # ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
