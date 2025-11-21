@@ -82,6 +82,3 @@ WORKDIR /app/Dstonylion
 
 # ===== Entrypoint =====
 ENTRYPOINT ["../config/scripts/entrypoint.prod.sh"]
-
-# ===== Start Daphne =====
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8001", "stonylion.asgi:application"]
