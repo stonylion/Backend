@@ -33,10 +33,15 @@ RUN pip install numpy==1.22.0
 # 기본 requirements
 RUN pip install -r requirements.txt
 
-# ===== MeCab + UniDic (정답) =====
-RUN pip install mecab-python3 unidic==1.1.0
+# ===== MeCab UniDic =====
+RUN pip install mecab-python3==1.0.5 unidic==1.1.0
 
-RUN python3 -m unidic download --dir /usr/local/lib/python3.10/site-packages/unidic/dicdir
+# UniDic 다운로드 (기본 경로에 설치)
+RUN python3 -m unidic download
+
+# 기존 dicdir 삭제 + 새로운 사전 심링크 생성
+RUN rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir && \
+    ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
 
 # ===== Copy project =====
 COPY . /app
