@@ -11,14 +11,13 @@ RUN apt-get update && apt-get install -y \
     mecab \
     libmecab-dev \
     mecab-ipadic-utf8 \
-    default-libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== Workdir =====
 WORKDIR /app
+
 COPY requirements.txt /app/requirements.txt
 
-# ===== Python Packages =====
 RUN pip install --upgrade pip
 RUN pip install "Cython<3.0"
 
@@ -32,15 +31,26 @@ RUN pip install torchaudio==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/to
 # OpenVoice numpy fix
 RUN pip install numpy==1.22.0
 
-# 기본 requirements
+# ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
-# 충돌 방지
+# ===== Install UniDic into image (영구 설치) =====
+RUN pip install --no-cache-dir unidic \
+    && python3 -m unidic download \
+    && rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir \
+    && ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
+
+# ===== Remove unidic_lite if exists =====
 RUN pip uninstall -y unidic_lite || true
-RUN mkdir -p /usr/local/lib/python3.10/site-packages/unidic
 
 # ===== Copy project =====
 COPY . /app
 
+# ===== Django root =====
 WORKDIR /app/Dstonylion
-# CMD 없음!!  (docker-compose가 entrypoint 담당)
+
+# ===== Entrypoint =====
+ENTRYPOINT ["../config/scripts/entrypoint.prod.sh"]
+
+# ===== Start Daphne =====
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8001", "stonylion.asgi:application"]
