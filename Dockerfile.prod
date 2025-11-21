@@ -49,6 +49,8 @@ RUN pip install librosa==0.10.0.post2 \
     python-magic \
     einops
 
+RUN pip install transformers==4.39.3
+
 # ===== Install UniDic into image (영구 설치) =====
 RUN pip install --no-cache-dir unidic \
     && python3 -m unidic download \
