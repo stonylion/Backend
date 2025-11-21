@@ -62,3 +62,4 @@ jieba==0.42.1
 pypinyin==0.50.0
 numpy==1.26.4
 aiofiles
+gunicorn==21.2.0
