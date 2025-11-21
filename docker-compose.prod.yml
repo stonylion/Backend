@@ -1,6 +1,7 @@
 services:
   web:
     container_name: web
+    command: gunicorn stonylion.wsgi:application --bind 0.0.0.0:8000
     image: stonylion_backend:latest
     build:
       context: .
@@ -49,6 +50,7 @@ services:
     ports:
       - "80:80"
     depends_on:
+      - web
       - asgi
     volumes:
       - static:/app/staticfiles
