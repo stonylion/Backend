@@ -1,16 +1,15 @@
 #!/bin/sh
+set -e
 
-echo "Installing MeloTTS and OpenVoice ..."
+echo "[ENTRYPOINT] Installing MeloTTS and OpenVoice ..."
 pip install -e /app/MeloTTS
 pip install -e /app/OpenVoice
 
-cd /app/Dstonylion
-
-echo "Applying database migrations"
+echo "[ENTRYPOINT] Applying database migrations..."
 python manage.py migrate --noinput
 
-echo "Collecting static files"
+echo "[ENTRYPOINT] Collecting static files..."
 python manage.py collectstatic --noinput
 
-echo "Starting server..."
+echo "[ENTRYPOINT] Ready. Executing command: $@"
 exec "$@"
