@@ -57,9 +57,6 @@ RUN pip install --no-cache-dir unidic \
 # ===== Remove unidic_lite if exists =====
 RUN pip uninstall -y unidic_lite || true
 
-# ===== Faster-whisper ====== 
-RUN pip install faster-whisper==0.8.1
-
 # ===== Install MeloTTS & OpenVoice =====
 RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
     && pip install --no-deps -e /app/MeloTTS
