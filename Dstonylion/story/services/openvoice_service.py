@@ -2,7 +2,6 @@
 import os
 import torch
 from django.conf import settings
-from openvoice import se_extractor
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -76,6 +75,7 @@ def extract_se(reference_audio_path, base_se_path):
     """
     사용자 참고 음성에서 SE 벡터 추출
     """
+    from openvoice import se_extractor
     converter = get_tone_converter()
     target_se, _ = se_extractor.get_se(reference_audio_path, converter, vad=True)
 
