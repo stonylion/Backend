@@ -41,6 +41,11 @@ install_unidic() {
   docker exec $NAME pip install --no-cache-dir unidic || true
   docker exec $NAME python3 -m unidic download
 
-  docker exec $NAME bash -c "
-  rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir &&
-  ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir"
+  # *** MUST BE ONE LINE ***
+  docker exec $NAME bash -c "rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir && ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir"
+
+  echo "[OK] UniDic installed in $NAME"
+}
+
+install_unidic $WEB
+install_unidic $ASGI
