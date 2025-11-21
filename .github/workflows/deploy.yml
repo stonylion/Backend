@@ -16,6 +16,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # GitHub 리포지토리를 체크아웃
+      - name: Free Disk Space on GitHub Runner
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/powershell
+          sudo apt-get clean
+          docker system prune -af || true
+          df -h
+
       - name: checkout
         uses: actions/checkout@v4
 
