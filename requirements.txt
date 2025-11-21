@@ -63,3 +63,4 @@ pypinyin==0.50.0
 numpy==1.26.4
 aiofiles
 gunicorn==21.2.0
+faster-whisper==0.9.0
