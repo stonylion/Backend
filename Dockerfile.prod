@@ -42,8 +42,8 @@ RUN pip install numpy==1.22.0
 # ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
-# ===== Install PyAV to avoid Cython build errors =====
-RUN pip install av==10.0.0 --only-binary :all:
+# ===== Install PyAV (FFmpeg binding) =====
+RUN pip install av==16.0.1 --only-binary :all:
 
 # ===== Install MeloTTS & OpenVoice =====
 RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
