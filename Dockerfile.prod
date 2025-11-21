@@ -7,12 +7,12 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     ffmpeg \
+    mecab \
     libmecab-dev \
     mecab-ipadic-utf8 \
     default-libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
 
-    
 # ===== Workdir =====
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
@@ -21,7 +21,7 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip
 RUN pip install "Cython<3.0"
 
-# faster-whisper (optional)
+# faster-whisper optional
 RUN pip install faster-whisper==0.9.0 --only-binary :all: || true
 
 # PyTorch CPU
@@ -34,15 +34,12 @@ RUN pip install numpy==1.22.0
 # 기본 requirements
 RUN pip install -r requirements.txt
 
-# ===== MeCab UniDic =====
-RUN pip install mecab-python3==1.0.5 unidic==1.1.0
-
-# UniDic 다운로드 (기본 경로에 설치)
+# ===== UniDic download =====
 RUN python3 -m unidic download
 
-# 기존 dicdir 삭제 + 새로운 사전 심링크 생성
-RUN rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir && \
-    ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
+# ===== UniDic dicdir fix =====
+RUN rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir \
+    && ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
 
 # ===== Copy project =====
 COPY . /app
