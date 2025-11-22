@@ -33,6 +33,7 @@ class Story(models.Model):
     category = models.CharField (max_length=20, choices=CATEGORY_CHOICES, default="classic")
 
     morals = models.ManyToManyField(MoralTheme, related_name="stories", blank=True)
+    #style = models.CharField(max_length=20, null=True, blank=True)
 
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(default=timezone.now, db_index=True)

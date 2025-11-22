@@ -1,8 +1,9 @@
-import redis, random, os, json, re
+import redis, random, os, json, re, base64
 import openai
 # import torch
 import traceback
 from django.core.files import File
+from django.core.files.base import ContentFile
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.views import APIView
@@ -362,7 +363,7 @@ class StoryGenerateView(APIView):
             StoryPage.objects.create(
                 story=story,
                 page_number=id,
-                text=page_text
+                text=page_text  
             )
         
         story.page_count = len(pages)
@@ -371,6 +372,51 @@ class StoryGenerateView(APIView):
         serializer = StorySerializer(story)
         return Response(serializer.data, status=201)
     
+VALID_STYLES = {"watercolor", "oil", "crayon", "3d"}
+STYLE_CONFIG = {
+    "watercolor": {
+        "label": "수채화",
+        "prompt": "soft watercolor illustration, gentle pastel colors, for children",
+        "reference_paths": [
+            "illustrations_example/watercolor/watercolor_example1.png",
+            "illustrations_example/watercolor/watercolor_example2.png",
+            "illustrations_example/watercolor/watercolor_example3.png",
+            "illustrations_example/watercolor/watercolor_example4.png"
+        ],
+    },
+    "oil": {
+        "label": "유화",
+        "prompt": "oil painting illustration, rich texture, for children storybook",
+        "reference_paths": [
+            "illustrations_example/oil/oil_example1.png",
+            "illustrations_example/oil/oil_example2.png",
+            "illustrations_example/oil/oil_example3.png",
+            "illustrations_example/oil/oil_example4.png"
+        ],
+    },
+    "crayon": {
+        "label": "크레파스",
+        "prompt": "crayon style drawing, childlike, colorful, for kids",
+        "reference_paths": [
+            "illustrations_example/crayon/crayon_example1.png",
+            "illustrations_example/crayon/crayon_example2.png",
+            "illustrations_example/crayon/crayon_example3.png",
+            "illustrations_example/crayon/crayon_example4.png"
+        ],
+    },
+    "3d": {
+        "label": "3D 애니메이션",
+        "prompt": "3D animation style, Pixar-like, bright and cute",
+        "reference_paths": [
+            "illustrations_example/3d-animation/3d_example1.png",
+            "illustrations_example/3d-animation/3d_example2.png",
+            "illustrations_example/3d-animation/3d_example3.png",
+            "illustrations_example/3d-animation/3d_example4.png"
+        ],
+    },
+}
+
+
 class StoryResetView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -400,35 +446,24 @@ class StoryResetView(APIView):
         return Response({
             "message": "스토리 생성 흐름 데이터가 초기화되었습니다."
         }, status=200)
-
-
-
-
+'''
 class StoryStyleSelectView(APIView):
-    """
-    사용자가 동화의 삽화 스타일을 선택하는 API
-    """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         story_id = request.data.get("story_id")
         style = request.data.get("style")
 
-        # 필수 값 확인
         if not story_id or not style:
             return Response(
                 {"error": "story_id와 style은 필수 입력값입니다."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 유효한 스타일 목록 (명세에 따라 사전 정의)
-        valid_styles = ["수채화", "연필화", "유화", "디지털", "동양화", "파스텔"]
-
-        if style not in valid_styles:
+        if style not in VALID_STYLES:
             return Response(
                 {"error": "유효하지 않은 스타일입니다."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -439,18 +474,72 @@ class StoryStyleSelectView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 선택한 스타일 저장
-        story.status = "style_selected"
-        story.save()
-
-        # 삽화 스타일을 별도로 저장하고 싶으면 Redis나 별도 테이블 사용 가능
-        # 예시: story.illustrations.update(style=style) 도 가능
+        story.style = style
+        story.updated_at = timezone.now()
+        story.save(update_fields=["illustration_style", "updated_at"])
 
         return Response(
-            {"message": f"선택된 스타일: {style}"},
-            status=status.HTTP_200_OK
+            {
+                "message": f"선택된 스타일: {STYLE_CONFIG[style]['label']}",
+                "story_id": story.id,
+                "style": style,
+            },
+            status=status.HTTP_200_OK,
         )
-    
+
+def generate_and_save_illustration(story_page: StoryPage):
+    story = story_page.story
+    style = story.style
+
+    if not style:
+        raise ValueError("Story에 style이 설정되어 있지 않습니다.")
+
+    style_conf = STYLE_CONFIG.get(style, {})
+    style_prompt = style_conf.get("prompt", "cute children book illustration")
+    ref_paths = style_conf.get("reference_paths", [])
+
+    ref_urls = [default_storage.url(path) for path in ref_paths]
+    ref_text = ""
+    if ref_urls:
+        ref_text = "참고 이미지 (스타일 예시): " + ", ".join(ref_urls)
+
+    prompt = f"""
+    {style_prompt}.
+    어린이 동화의 한 장면을 그립니다.
+    장면 설명(텍스트): "{story_page.text[:300]}"
+    너무 무섭지 않고, 0~7세를 위한 따뜻하고 안전한 느낌으로 그려주세요.
+    {ref_text}
+    """
+
+    image_response = openai.images.generate(
+        model="gpt-image-1",
+        prompt=prompt,
+        size="1024x1024",
+        n=1,
+    )
+
+    image_base64 = image_response.data[0].b64_json
+    image_bytes = base64.b64decode(image_base64)
+
+    story_id = story.id
+    page_no = story_page.page_number
+
+    folder_prefix = "stories/generated_story"
+    filename = f"generated_story_{story_id}/story_{story_id}_page_{page_no}.png"
+    relative_path = f"{folder_prefix}/{filename}"
+
+    default_storage.save(relative_path, ContentFile(image_bytes))
+    image_url = default_storage.url(relative_path)
+
+    illustration = Illustrations.objects.create(
+        story_page=story_page,
+        image=relative_path,
+        prompt=prompt,
+        style=style,
+        created_at=timezone.now(),
+    )
+    return illustration, image_url
+
 class IllustrationRegenerateView(APIView):
     """
     특정 페이지의 삽화를 다시 생성하는 API
@@ -519,7 +608,7 @@ class IllustrationRegenerateView(APIView):
                 {"error": f"재생성 중 오류가 발생했습니다: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
+'''
 class StoryListView(APIView):
     def get(self, request):
         category = request.query_params.get("category")
@@ -535,6 +624,8 @@ class StoryListView(APIView):
         return Response(serializer.data, status=200)
     
 class StoryDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, story_id):
         story = Story.objects.filter(id=story_id).first()
         if not story:
@@ -543,23 +634,113 @@ class StoryDetailView(APIView):
         serializer = StorySerializer(story)
         return Response(serializer.data, status=200)
     
+    def patch(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+        
+        if story.user != request.user:
+            return Response({"detail": "권한이 없습니다."},
+                            status=status.HTTP_403_FORBIDDEN)
+        
+        new_title = request.data.get("title")
+        new_content = request.data.get("content")
+
+        if not new_content:
+            return Response(
+                {"error": "content는 필수 입력값입니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # 제목 업데이트(옵션)
+        if new_title:
+            story.title = new_title
+
+        story.content = new_content
+        story.updated_at = timezone.now()
+        story.save()
+
+        StoryPage.objects.filter(story=story).delete()
+        Illustrations.objects.filter(story_page__story=story).delete()
+
+        pages = split_into_pages(new_content)
+        for idx, page_text in enumerate(pages, start=1):
+            StoryPage.objects.create(
+                story=story,
+                page_number=idx,
+                text=page_text,
+            )
+
+        story.page_count = len(pages)
+        story.updated_at = timezone.now()
+        story.save()
+
+        serializer = StorySerializer(story)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
 class StoryPageListView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, story_id):
         story = Story.objects.filter(id=story_id).first()
         if not story:
             return Response({"detail": "Story not found"}, status=404)
 
-        if request.user.is_authenticated:
-            lib, created = Library.objects.get_or_create(
-                user=request.user,
-                story=story,
-            )
-            if created:
-                lib.save()
+        lib, created = Library.objects.get_or_create(
+            user=request.user,
+            story=story,
+        )
+        if created:
+            lib.save()
 
         pages = StoryPage.objects.filter(story=story).order_by("page_number")
         serializer = StoryPageSerializer(pages, many=True)
         return Response(serializer.data, status=200)
+    
+    def patch(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+        
+        if story.user != request.user:
+            return Response({"detail": "권한이 없습니다."},
+                            status=status.HTTP_403_FORBIDDEN)
+        
+        page_number = request.data.get("page_number")
+        new_text = request.data.get("text")
+
+        if page_number is None or new_text is None:
+            return Response(
+                {"error": "page_number와 text는 필수입니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            page_number = int(page_number)
+        except ValueError:
+            return Response(
+                {"error": "page_number는 숫자여야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            page = StoryPage.objects.get(story=story, page_number=page_number)
+        except StoryPage.DoesNotExist:
+            return Response(
+                {"error": f"{page_number} 페이지를 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        page.text = new_text
+        page.save()
+
+        all_pages = StoryPage.objects.filter(story=story).order_by("page_number")
+        story.content = "".join(p.text for p in all_pages)
+        story.updated_at = timezone.now()
+        story.save()
+
+        serializer = StoryPageSerializer(page)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class StoryScriptView(APIView):
     def get(self, request, story_id):
@@ -570,46 +751,6 @@ class StoryScriptView(APIView):
         pages = StoryPage.objects.filter(story=story).order_by("page_number")
         serializer = StoryScriptSerializer(pages, many=True)
         return Response(serializer.data, status=200)
-
-class StoryJsonImportView(APIView):
-    """
-    S3의 files/stories 폴더에서 json 파일을 읽어 Story와 StoryPage로 저장
-    파일명 예: stories/story1.json (버킷 내부 경로)
-    """
-    def post(self, request):
-        filename = request.data.get("filename")
-        if not filename:
-            return Response({"detail": "filename required"}, status=400)
-        
-        """
-        path = os.path.join(settings.BASE_DIR, "static", "stories", filename)
-        if not os.path.exists(path):
-            return Response({"detail": "file not found"}, status=404)
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        """
-        s3_path = f"stories/{filename}"
-        if not default_storage.exists(s3_path):
-            s3_path = f"media/stories/{filename}"
-            if not default_storage.exists(s3_path):
-                return Response({"detail": f"{s3_path} not found in S3"}, status=404)
-        with default_storage.open(s3_path, "r") as f:
-            data = json.load(f)
-
-
-        story = Story.objects.create(
-            user = request.user,
-            title=data.get("title", "무제 동화"),
-            content=" ".join([p.get("text", "") for p in data.get("pages", [])]),
-            page_count=len(data.get("pages", []))
-        )
-
-
-        for i, page in enumerate(data["pages"], start=1):
-            StoryPage.objects.create(story=story, page_number=i, text=page.get("text", ""))
-
-        return Response({"story_id": story.id, "title": story.title}, status=201)
 
 import chardet  
 class ClassicStoryUploadView(APIView):
