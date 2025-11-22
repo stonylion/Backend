@@ -1,11 +1,10 @@
 services:
   web:
     container_name: web
-    command: gunicorn stonylion.wsgi:application --bind 0.0.0.0:8000
-    image: stonylion_backend:latest
     build:
       context: .
       dockerfile: Dockerfile.prod
+    command: gunicorn stonylion.wsgi:application --log-level debug --error-logfile - --capture-output
     env_file:
       - .env
     volumes:
@@ -25,7 +24,9 @@ services:
 
   asgi:
     container_name: asgi
-    image: stonylion_backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
     working_dir: /app/Dstonylion
     entrypoint:
       - sh
@@ -46,7 +47,8 @@ services:
 
   nginx:
     container_name: nginx
-    build: ./config/nginx
+    build:
+      context: ./config/nginx
     ports:
       - "80:80"
     depends_on:
