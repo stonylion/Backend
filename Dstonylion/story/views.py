@@ -1,6 +1,8 @@
 import redis, random, os, json, re
 import openai
-import torch
+# import torch
+import traceback
+from django.core.files import File
 from django.conf import settings
 from django.core.files import File
 from django.shortcuts import render
@@ -514,7 +516,6 @@ class ClonedVoiceTTSView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-
 class StoryStyleSelectView(APIView):
     """
     사용자가 동화의 삽화 스타일을 선택하는 API
@@ -665,9 +666,8 @@ class StoryPageListView(APIView):
                 user=request.user,
                 story=story,
             )
-            print("created:", created)
-            lib.last_viewed_time = timezone.now()
-            lib.save()
+            if created:
+                lib.save()
 
         pages = StoryPage.objects.filter(story=story).order_by("page_number")
         serializer = StoryPageSerializer(pages, many=True)

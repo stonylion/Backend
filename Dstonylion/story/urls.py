@@ -14,7 +14,6 @@ urlpatterns = [
 
     #path('api/illustration/regenerate/', IllustrationRegenerateView.as_view(), name='illustration-regenerate'),
     #path('generate/illustrations/', StoryJsonImportView.as_view()),
-
     path('classic/upload/', ClassicStoryUploadView.as_view()),
     path('<int:story_id>/', StoryDetailView.as_view()),
     path('<int:story_id>/pages/', StoryPageListView.as_view()),

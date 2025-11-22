@@ -65,6 +65,34 @@ class LibraryDetailView(views.APIView):
         
         story.delete()
         return Response({"detail": "동화가 삭제되었습니다."})
+    
+class LastPageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        story_id = request.data.get("story_id")
+        page_number = request.data.get("page_number")
+
+        if story_id is None or page_number is None:
+            return Response({"detail": "story_id and page_number required"}, status=400)
+
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+
+        lib, _ = Library.objects.get_or_create(
+            user=request.user,
+            story=story
+        )
+
+        if page_number > lib.last_viewed_page:
+            lib.last_viewed_page = page_number
+
+        lib.last_viewed_time = timezone.now()
+        lib.save()
+
+        return Response({"detail": "progress updated"}, status=200)
+
 
 class UserProfileView(APIView):
     """

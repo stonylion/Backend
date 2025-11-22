@@ -1,6 +1,6 @@
 import os
 import boto3
-import torch
+# import torch
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.response import Response
@@ -452,7 +452,7 @@ class VoiceCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-
+'''
 class VoiceCloneView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -548,7 +548,7 @@ class VoiceCloneView(APIView):
             for path in [tmp_ref_path, output_path, se_path]:
                 if path and os.path.exists(path):
                     os.remove(path)
-
+'''
 
 class VoiceDetailView(APIView):
     """
