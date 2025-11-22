@@ -13,6 +13,7 @@ urlpatterns = [
     path("child/", ChildCreateView.as_view(), name="child-create"),
     path("child/detail/<int:child_id>/", ChildDetailView.as_view(), name="child-detail"),
     path("child/<int:child_id>/", ChildUpdateView.as_view(), name="child-update"),
+    path("child/<int:child_id>/delete/", ChildDeleteView.as_view(), name="child-delete"),
     path("voice/list/", VoiceListView.as_view(), name="voice-list"),
     path("voice/", VoiceCreateView.as_view(), name="voice-create"),
     path("voice/<int:voice_id>/", VoiceDetailView.as_view(), name="voice-detail"),

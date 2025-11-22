@@ -398,6 +398,41 @@ class ChildUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+class ChildDeleteView(APIView):
+    """
+    특정 아이 프로필을 삭제하는 API
+    DELETE /api/accounts/child/<child_id>/delete/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, child_id):
+        try:
+            user = request.user
+
+            # 본인 소유 자녀만 삭제 가능
+            try:
+                child = Child.objects.get(id=child_id, user=user)
+            except Child.DoesNotExist:
+                return Response(
+                    {"error": "해당 아이 정보를 찾을 수 없습니다."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # 삭제 수행
+            child.delete()
+
+            return Response(
+                {"message": "아이 프로필이 성공적으로 삭제되었습니다."},
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": f"아이 삭제 중 오류가 발생했습니다: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        
 class VoiceCreateView(APIView):
     """
     새로운 TTS용 목소리 메타데이터를 등록하는 API
