@@ -66,3 +66,16 @@ numpy==1.26.4
 aiofiles==23.2.1
 gunicorn==21.2.0
 ctranslate2==4.6.1
+wavmark==0.0.4
+langid==1.1.6
+gradio==4.44.0
+inflect
+jamo
+ko_pron
+regex
+cached_path
+tqdm
+matplotlib
+click
+tensorboard
+python-magic
