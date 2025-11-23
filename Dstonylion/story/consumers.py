@@ -206,7 +206,7 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
     # 🔊 TEMP AUDIO SAVE
     # -------------------------------
     async def _save_temp_audio(self, chunk_bytes):
-        fd, temp_path = tempfile.mkstemp(suffix=".wav")
+        fd, temp_path = tempfile.mkstemp(suffix=".webm")
         os.close(fd)
 
         async with aiofiles.open(temp_path, "wb") as f:
