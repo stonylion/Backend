@@ -12,7 +12,7 @@ services:
       - media:/app/media
       - /home/ubuntu/MeloTTS:/app/MeloTTS
       - /home/ubuntu/OpenVoice:/app/OpenVoice
-      - /home/ubuntu/models/checkpoints_v2:/app/checkpoints_v2
+      - /home/ubuntu/models:/app/models
     expose:
       - 8000
     working_dir: /app/Dstonylion
@@ -43,7 +43,7 @@ services:
       - media:/app/media
       - /home/ubuntu/MeloTTS:/app/MeloTTS
       - /home/ubuntu/OpenVoice:/app/OpenVoice
-      - /home/ubuntu/models/checkpoints_v2:/app/checkpoints_v2
+      - /home/ubuntu/models:/app/models
 
   nginx:
     container_name: nginx
