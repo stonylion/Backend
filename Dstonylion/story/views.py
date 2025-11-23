@@ -1,6 +1,6 @@
 import redis, random, os, json, re, base64
 import openai
-# import torch
+import torch
 import traceback
 from django.core.files import File
 from django.core.files.base import ContentFile
