@@ -104,21 +104,25 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 # Redis
 
 CHANNEL_LAYERS = {
-    'default' : {
-        'BACKEND' : 'channels_redis.core.RedisChannelLayer',
-        'CONFIG' : {
-            "hosts" : [(REDIS_HOST, REDIS_PORT)]
-        }
-    }
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [{
+                "host": REDIS_HOST,
+                "port": REDIS_PORT,
+                "ssl": True,     
+            }],
+        },
+    },
 }
-
 
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/0",
+        "LOCATION": f"rediss://{REDIS_HOST}:{REDIS_PORT}/0",   # 🔥 rediss
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SSL": True,     # 🔥 필수
         }
     }
 }

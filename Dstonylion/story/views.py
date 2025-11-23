@@ -50,6 +50,7 @@ class StoryOptionSaveView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
+            ssl=True, 
         )
         redis_client.hset(f"story_option:{request.user.id}", mapping={"runtime": runtime, "age_group": age_group})
 
@@ -77,6 +78,7 @@ class StoryDraftUpdateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
+            ssl=True, 
         )
 
         redis_key = f"story_draft:{request.user.id}"
@@ -230,6 +232,7 @@ class StoryMoralSaveView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
+            ssl=True, 
         )
         user_id = request.user.id
         redis_key = f"story_morals:{user_id}"
@@ -272,6 +275,7 @@ class StoryGenerateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
+            ssl=True, 
         )
 
         user_id = request.user.id
@@ -382,6 +386,7 @@ class StoryResetView(APIView):
                 port=getattr(settings, "REDIS_PORT", 6379),
                 db=0,
                 decode_responses=True,
+                ssl=True, 
             )
 
             keys = [

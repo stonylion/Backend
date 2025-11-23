@@ -62,6 +62,8 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
                 port=settings.REDIS_PORT,
                 db=0,
                 decode_responses=True,
+                ssl=True,                 # 🔥 필수 — TLS 활성화
+                ssl_cert_reqs=None,
             )
             self.redis_draft_key = f"draft:{self.user.id}"
 
