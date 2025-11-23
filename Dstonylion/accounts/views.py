@@ -490,15 +490,10 @@ class VoiceCreateView(APIView):
 class VoiceCloneView(APIView):
     permission_classes = [IsAuthenticated]
 
-    BASE_SPEAKER_AUDIO = os.path.join(
-    settings.BASE_DIR.parent, 
-    "checkpoints_v2/base_speakers/base_ko.wav"
-)
+    MODEL_DIR = "/app/models/checkpoints_v2"
 
-    BASE_SPEAKER_SE = os.path.join(
-        settings.BASE_DIR.parent, 
-        "checkpoints_v2/base_speakers/ses/kr.pth"
-    )
+    BASE_SPEAKER_AUDIO = os.path.join(MODEL_DIR, "base_speakers", "base_ko.wav")
+    BASE_SPEAKER_SE    = os.path.join(MODEL_DIR, "base_speakers", "ses", "kr.pth")
 
     def post(self, request):
         tmp_ref_path = None

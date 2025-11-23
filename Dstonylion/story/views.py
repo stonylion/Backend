@@ -412,9 +412,10 @@ class ClonedVoiceTTSView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    BASE_SPEAKER_SE = os.path.join(BASE_DIR, "checkpoints_v2", "base_speakers", "ses", "kr.pth")
-    BASE_SPEAKER_AUDIO = os.path.join(BASE_DIR, "checkpoints_v2", "base_speakers", "base_ko.wav")
+    MODEL_DIR = "/app/models/checkpoints_v2"
+
+    BASE_SPEAKER_AUDIO = os.path.join(MODEL_DIR, "base_speakers", "base_ko.wav")
+    BASE_SPEAKER_SE    = os.path.join(MODEL_DIR, "base_speakers", "ses", "kr.pth")
 
     def post(self, request):
         from story.services.openvoice_service import (
