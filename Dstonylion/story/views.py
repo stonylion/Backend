@@ -532,12 +532,11 @@ class ClonedVoiceTTSView(APIView):
             print("🔥 [TTS ERROR TRACEBACK START]")
             print(traceback.format_exc())
             print("🔥 [TTS ERROR TRACEBACK END]")
-            return Response({"error": str(e)}, status=500)
-                                
-
+            return Response({"error": str(e)}, status=500)                       
 
 
 class IllustrationStyleView(APIView):
+    
     permission_classes = [IsAuthenticated]
 
     def post(self, request, story_id):
