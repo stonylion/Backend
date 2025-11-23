@@ -11,7 +11,6 @@ urlpatterns = [
     path('', StoryListView.as_view()),
     path('reset/', StoryResetView.as_view()),
     path("user/voice/tts/", ClonedVoiceTTSView.as_view(), name="cloned-voice-tts"),
-    path("illustration/<int:story_id>/style/", IllustrationStyleView.as_view()),
 
     #path('generate/illustrations/', StoryJsonImportView.as_view()),
 
