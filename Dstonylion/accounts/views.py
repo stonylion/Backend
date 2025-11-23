@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken, OutstandingToken, BlacklistedToken
 from django.db import transaction
 import tempfile
+import traceback
 from django.core.files import File
 from django.utils import timezone
 from django.core.files.base import ContentFile
@@ -571,6 +572,8 @@ class VoiceCloneView(APIView):
             }, status=200)
 
         except Exception as e:
+            print("🔥 ERROR in VoiceCloneView:", e)
+            traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
         finally:
