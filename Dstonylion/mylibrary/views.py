@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, views
 from django.shortcuts import get_object_or_404
+from django.db.models import F
 
 from .models import Library, User
 from .serializers import *
@@ -23,7 +24,8 @@ class RecentReadView(views.APIView):
         if category in ["classic", "custom", "extended"]:
             libraries = libraries.filter(story__category=category)
 
-        libraries = libraries.order_by("-last_viewed_time")
+        
+        libraries = libraries.order_by(F("last_viewed_time").desc(nulls_last=True))
         
         serializer = LibrarySerializer(libraries, many=True)
 
@@ -43,7 +45,7 @@ class RecentGeneratedView(views.APIView):
         if category in ["classic", "custom", "extended"]:
             libraries = libraries.filter(story__category=category)
 
-        libraries = libraries.order_by("-story__created_at")
+        libraries = libraries.order_by(F("story__created_at").desc(nulls_last=True))
 
         serializer = LibrarySerializer(libraries, many=True)
 
