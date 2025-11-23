@@ -78,7 +78,7 @@ pandas==2.0.3
 plac==1.4.5
 platformdirs==4.5.0
 pooch==1.8.2
-ydub==0.25.1
+pydub==0.25.1
 Pygments==2.19.2
 pykakasi==2.2.1
 pyparsing==3.2.5
