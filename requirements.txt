@@ -66,7 +66,7 @@ numpy==1.26.4
 aiofiles==23.2.1
 gunicorn==21.2.0
 ctranslate2==4.6.1
-wavmark==0.0.4
+wavmark==0.0.3
 langid==1.1.6
 gradio==4.44.0
 inflect
