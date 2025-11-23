@@ -71,6 +71,9 @@ RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
 RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice \
     && pip install --no-build-isolation --no-deps -e /app/OpenVoice
 
+# ===== Copy model checkpoints =====
+COPY models /app/models
+
 # ===== Copy project =====
 COPY . /app
 
