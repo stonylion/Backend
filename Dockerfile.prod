@@ -40,6 +40,8 @@ RUN pip install av==12.0.0
 # faster-whisper는 deps 없이 설치 (av 강제 설치 금지)
 RUN pip install faster-whisper==0.8.0 --no-deps
 
+RUN pip install whisper-timestamped==1.14.0
+
 # ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
