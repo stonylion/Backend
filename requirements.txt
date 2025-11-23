@@ -192,7 +192,6 @@ starlette==0.49.3
 tzdata==2025.2
 urllib3==2.5.0
 uvicorn==0.38.0
-websockets==10.4
 mecab-python3==1.0.5
 cn2an==0.5.22
 jieba==0.42.1
