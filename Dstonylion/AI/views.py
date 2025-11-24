@@ -446,7 +446,7 @@ class IllustrationDownloadView(views.APIView):
             presigned_url = s3_client.generate_presigned_url(
                 ClientMethod='get_object',
                 Params={'Bucket': bucket, 'Key': s3_key},
-                ExpiresIn=60 * 5  # 5분 유효
+                ExpiresIn=60 * 10  # 10분 유효
             )
         except Exception as e:
             return Response({"error": f"URL 생성 실패: {str(e)}"},
