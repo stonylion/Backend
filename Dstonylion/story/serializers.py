@@ -27,7 +27,7 @@ class StorySerializer(serializers.ModelSerializer):
 class StoryInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Story
-        fields = ["id", "title", "author", "category", "runtime", "age_group", "morals", "created_at", "updated_at"]
+        fields = ["id", "title", "author", "category", "runtime", "page_count", "age_group", "morals", "created_at", "updated_at"]
 
 class StoryDraftSerializer(serializers.Serializer):
     draft_text = serializers.CharField(required=False, allow_blank=True)
