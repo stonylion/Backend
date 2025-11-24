@@ -32,6 +32,7 @@ def safe_filename(s: str) -> str:
 
 
 def run_illustration_job(job_id):
+    connection.close()
     job = IllustrationJob.objects.get(id=job_id)
     story = job.story
     
@@ -44,10 +45,10 @@ def run_illustration_job(job_id):
         style = story.illustration_style or "watercolor"
 
         style_map = {
-            "watercolor": "in soft watercolor storybook illustration style",
-            "oil": "in warm classic oil painting fairy-tale style",
-            "crayon": "in cute crayon drawing style for toddlers",
-            "3d": "in rich 3D Pixar-like digital art style"
+            "watercolor": "in soft watercolor whimsical fantasy illustration style",
+            "oil": "in warm classic oil painting fantasy style",
+            "crayon": "in cute crayon-style whimsical illustration",
+            "3d": "in stylized 3D fantasy cartoon illustration style"
         }
         style_text = style_map.get(style, style_map["watercolor"])
 
@@ -61,11 +62,17 @@ def run_illustration_job(job_id):
         # 0) COVER 생성
         # =====================
         cover_prompt = f"""
-        Create a cover illustration for a children's storybook titled "{story.title}". 
-        The illustration MUST be {style_text}.
-        Story context:
-        {story_context}
-        """
+            Create a safe and friendly whimsical fantasy illustration for a story titled "{story.title}". 
+            The illustration MUST be {style_text}.
+
+            Important safety rules:
+            - Do NOT depict real children or minors.
+            - Use stylized fictional animals, creatures, or fantasy beings only.
+            - The artwork must be non-realistic and safe.
+
+            Story context (brief):
+            {story_context}
+            """
 
         cover_result = client.images.generate(
             model="gpt-image-1",
@@ -93,15 +100,25 @@ def run_illustration_job(job_id):
         # =====================
         # 1) 페이지 삽화 생성 (loop)
         # =====================
+        safe_page_text = re.sub(r"(아이|어린이|아기|친구|울|뛰|fall|child|kid|baby)", "", page.text, flags=re.I)
         for idx, page in enumerate(pages, start=1):
             page_prompt = f"""
-            Create an illustration for page {page.page_number}.
-            MUST be {style_text}.
-            Context:
-            {story_context}
-            Page text: "{page.text}"
-            """
+            Create a whimsical fantasy illustration for page {page.page_number}.
+            The style MUST be {style_text}.
 
+            Important:
+            - Do NOT depict real children or minors.
+            - Use only fictional creatures, stylized characters, or animals.
+            - The illustration must be non-realistic and safe.
+
+            General story context:
+            {story_context}
+
+            Short page idea:
+            "{safe_page_text}"
+            """
+            
+            
             result = client.images.generate(
                 model="gpt-image-1",
                 prompt=page_prompt,
