@@ -139,6 +139,8 @@ def run_illustration_job(job_id):
         job.save()
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         job.status = "FAILED"
         job.error_message = str(e)
         job.finished_at = timezone.now()

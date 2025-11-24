@@ -180,7 +180,7 @@ LOGGING = {
         },
         "django": {
             "handlers": ["console"],
-            "level": "ERROR",   # 필요하면 INFO로 변경
+            "level": "DEBUG",   # 필요하면 INFO로 변경
             "propagate": True,
         },
     },
