@@ -44,7 +44,7 @@ def run_illustration_job(job_id):
         style = story.illustration_style or "watercolor"
 
         style_map = {
-            "watercolor": "in soft watercolor children's book illustration style",
+            "watercolor": "in soft watercolor storybook illustration style",
             "oil": "in warm classic oil painting fairy-tale style",
             "crayon": "in cute crayon drawing style for toddlers",
             "3d": "in rich 3D Pixar-like digital art style"
