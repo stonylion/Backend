@@ -18,7 +18,7 @@ from openai import OpenAI
 from django.db import connection
 
 from story.models import Story, StoryPage, Illustrations
-from .models import IllustrationJob, ChatRoom
+from .models import IllustrationJob, IllustrationJobPage, ChatRoom
 from .serializers import *
 
 load_dotenv(settings.BASE_DIR / ".env")
@@ -116,11 +116,25 @@ def run_illustration_job(job_id):
             s3_path = default_storage.save(filename, file_obj)
 
             Illustrations.objects.create(
+                story=story,
                 story_page=page,
                 image=s3_path,
                 prompt=page_prompt,
                 style=style
             )
+            # COVER 업데이트
+            cover_status = job.page_status.get(page_number=0)
+            cover_status.status = "SUCCESS"
+            cover_status.save()
+
+            # 페이지 RUNNING → SUCCESS
+            page_status = job.page_status.get(page_number=page.page_number)
+            page_status.status = "RUNNING"
+            page_status.save()
+
+            # 이미지 생성 완료 후 SUCCESS
+            page_status.status = "SUCCESS"
+            page_status.save()
 
             job.completed_pages = idx + 1
             job.save()
@@ -130,8 +144,82 @@ def run_illustration_job(job_id):
         job.save()
         
 
+
     except Exception as e:
         job.status = "FAILED"
+        job.error_message = str(e)
+        job.finished_at = timezone.now()
+        job.save()
+
+    finally:
+        connection.close()
+
+def run_single_page_job(job_id, page_number):
+    job = IllustrationJob.objects.get(id=job_id)
+    story = job.story
+
+    job.status = "RUNNING"
+    job.started_at = timezone.now()
+    job.save(update_fields=["status", "started_at"])
+
+    try:
+        style = story.illustration_style or "watercolor"
+
+        style_map = {
+            "watercolor": "in soft watercolor storybook illustration style",
+            "oil": "in warm classic oil painting fairy-tale style",
+            "crayon": "in cute crayon drawing style for toddlers",
+            "3d": "in rich 3D Pixar-like digital art style"
+        }
+        style_text = style_map.get(style, style_map["watercolor"])
+
+        # 페이지 가져오기
+        page = StoryPage.objects.get(story=story, page_number=page_number)
+
+        safe_title = safe_filename(story.title)
+
+        page_prompt = f"""
+        Re-create an illustration for page {page.page_number}.
+        MUST be {style_text}.
+        Page text: "{page.text}"
+        """
+
+        result = client.images.generate(
+            model="gpt-image-1",
+            prompt=page_prompt,
+            size="1536x1024"
+        )
+
+        b64 = result.data[0].b64_json
+        img_bytes = base64.b64decode(b64)
+
+        filename = f"{safe_title}_regen_p{page.page_number}_{uuid4().hex[:8]}.png"
+        file_obj = ContentFile(img_bytes)
+        s3_path = default_storage.save(filename, file_obj)
+
+        # 기존 삽화 덮어쓰기 or 새로 생성
+        Illustrations.objects.create(
+            story=story,
+            story_page=page,
+            image=s3_path,
+            prompt=page_prompt,
+            style=style
+        )
+
+        page_status = job.page_status.get(page_number=page_number)
+        page_status.status = "SUCCESS"
+        page_status.save()
+
+        job.status = "SUCCESS"
+        job.completed_pages = 1
+        job.finished_at = timezone.now()
+        job.save()
+
+    except Exception as e:
+        job.status = "FAILED"
+        page_status = job.page_status.get(page_number=page_number)
+        page_status.status = "FAILED"
+        page_status.save()
         job.error_message = str(e)
         job.finished_at = timezone.now()
         job.save()
@@ -145,51 +233,178 @@ class GenerateIllustrationsView(views.APIView):
 
     def post(self, request):
         story_id = request.data.get("story_id")
-        story = Story.objects.filter(id=story_id).first()
+        story = Story.objects.filter(id=story_id, user=request.user).first()
 
         if not story:
             return Response({"detail": "Story not found"}, status=404)
 
-        # 페이지 수
         pages = story.pages.all().order_by("page_number")
         total_pages = len(pages)
 
         if total_pages == 0:
             return Response({"detail": "No pages in story"}, status=400)
 
-        # 1) Job 생성 (처음엔 PENDING)
+        # 1) Job 생성
         job = IllustrationJob.objects.create(
             story=story,
-            total_pages=total_pages + 1,
-            status="PENDING",   # 중요!!
-            created_at=timezone.now(),
+            total_pages=total_pages + 1,  # cover 포함
+            status="PENDING",
         )
 
-        # 2) 백그라운드에서 실행할 실제 작업 함수 호출
+        # 2) JobPage 기록 생성
+        IllustrationJobPage.objects.create(job=job, page_number=0, status="PENDING")   # COVER
+
+        for p in pages:
+            IllustrationJobPage.objects.create(job=job, page_number=p.page_number, status="PENDING")
+
+        # 3) 백그라운드 작업 실행
         threading.Thread(
             target=run_illustration_job,
             args=(job.id,),
-            daemon=True
+            daemon=True,
         ).start()
 
-        # 3) 사용자에게 즉시 응답
+        # 4) 즉시 응답
         return Response({
             "job_id": job.id,
             "status": "PENDING"
         }, status=200)
+
     
 class IllustrationJobStatusView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, job_id):
         job = get_object_or_404(IllustrationJob, id=job_id, story__user=request.user)
+        story = job.story
+
+        result_pages = []
+
+        for p in job.page_status.all():
+
+            # COVER
+            if p.page_number == 0:
+                illust = Illustrations.objects.filter(story=story, story_page=None).last()
+            else:
+                page_obj = story.pages.filter(page_number=p.page_number).first()
+                illust = Illustrations.objects.filter(story_page=page_obj).last() if page_obj else None
+
+            image_url = None
+            if p.status == "SUCCESS" and illust:
+                image_url = request.build_absolute_uri(illust.image.url)
+
+            result_pages.append({
+                "page_number": p.page_number,
+                "type": "cover" if p.page_number == 0 else "page",
+                "status": p.status,
+                "image_url": image_url
+            })
+
         return Response({
             "job_id": job.id,
             "status": job.status,
-            "completed_pages": job.completed_pages,
-            "total_pages": job.total_pages,
-            "error_message": job.error_message,
+            "pages": result_pages
         })
+    
+
+class ReGenerateIllustrationView(views.APIView):
+    """
+    특정 페이지의 삽화를 '실제로' GPT 이미지 모델을 이용해 다시 생성하는 API
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        story_id = request.data.get("story_id")
+        page = request.data.get("page")
+
+        if not story_id or page is None:
+            return Response(
+                {"error": "story_id와 page는 필수 입력값입니다."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 1) 스토리 확인
+        try:
+            story = Story.objects.get(id=story_id, user=request.user)
+        except Story.DoesNotExist:
+            return Response(
+                {"error": "해당 스토리를 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2) 페이지 확인
+        try:
+            story_page = StoryPage.objects.get(story=story, page_number=page)
+        except StoryPage.DoesNotExist:
+            return Response(
+                {"error": f"{page}페이지를 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 3) 기존 삽화 제거
+        Illustrations.objects.filter(story_page=story_page).delete()
+
+        # 4) 스타일 적용
+        style = story.illustration_style or "watercolor"
+        style_map = {
+            "watercolor": "in soft watercolor storybook illustration style",
+            "oil": "in warm classic oil painting fairy-tale style",
+            "crayon": "in cute crayon drawing style for toddlers",
+            "3d": "in rich 3D Pixar-like digital art style"
+        }
+        style_text = style_map.get(style, style_map["watercolor"])
+
+        # 5) Prompt 생성
+        story_context = "\n".join([f"Page {p.page_number}: {p.text}"
+                                   for p in story.pages.all().order_by("page_number")])
+
+        page_prompt = f"""
+        Re-generate an illustration for page {story_page.page_number}.
+        The style MUST be {style_text}.
+        Full Story Context:
+        {story_context}
+        Page text: "{story_page.text}"
+        """
+
+        # 6) GPT 이미지 생성
+        try:
+            result = client.images.generate(
+                model="gpt-image-1",
+                prompt=page_prompt,
+                size="1536x1024"
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"AI 이미지 생성 실패: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Base64 → 파일 변환
+        b64 = result.data[0].b64_json
+        img_bytes = base64.b64decode(b64)
+
+        filename = f"story{story_id}_page{page}_regen_{uuid4().hex[:8]}.png"
+        file_obj = ContentFile(img_bytes)
+
+        # 7) S3 업로드
+        s3_path = default_storage.save(filename, file_obj)
+
+        # 8) 새로운 삽화 DB 등록
+        illustration = Illustrations.objects.create(
+            story=story,
+            story_page=story_page,
+            image=s3_path,
+            prompt=page_prompt,
+            style=style
+        )
+
+        # 9) 최종 응답
+        return Response({
+            "story_id": story_id,
+            "page": page,
+            "status": "SUCCESS",
+            "new_image_url": request.build_absolute_uri(illustration.image.url)
+        }, status=200)
     
 class IllustrationDownloadView(views.APIView):
     permission_classes = [IsAuthenticated]
