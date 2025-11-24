@@ -31,7 +31,7 @@ services:
     working_dir: /app/Dstonylion
     entrypoint:
       - sh
-      - /app/config/docker/entrypoint.prod.sh
+      - /app/config/docker/entrypoint.asgi.sh
     command: daphne -b 0.0.0.0 -p 8001 stonylion.asgi:application
     env_file:
       - .env

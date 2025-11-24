@@ -10,5 +10,4 @@ python manage.py migrate --noinput || exit 1
 echo "[ENTRYPOINT] Collecting static files"
 python manage.py collectstatic --noinput || exit 1
 
-echo "[ENTRYPOINT] Starting Daphne..."
 exec "$@"
