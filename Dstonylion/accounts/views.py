@@ -539,7 +539,6 @@ class VoiceCloneView(APIView):
             output_path, target_se = clone_voice(
                 source_audio_path=self.BASE_SPEAKER_AUDIO,
                 reference_audio_path=tmp_ref_path,
-                base_speaker_se_path=self.BASE_SPEAKER_SE,
                 output_path=output_path
             )
             # SE 벡터 파일로 저장

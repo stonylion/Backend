@@ -15,12 +15,13 @@ from django.core.files.storage import default_storage
 from rest_framework.response import Response
 from dotenv import load_dotenv
 from openai import OpenAI
+from django.db import connection
 
 from story.models import Story, StoryPage, Illustrations
 from .models import IllustrationJob, ChatRoom
 from .serializers import *
 
-load_dotenv(settings.BASE_DIR/ ".env")
+load_dotenv(settings.BASE_DIR / ".env")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -127,12 +128,16 @@ def run_illustration_job(job_id):
         job.status = "SUCCESS"
         job.finished_at = timezone.now()
         job.save()
+        
 
     except Exception as e:
         job.status = "FAILED"
         job.error_message = str(e)
         job.finished_at = timezone.now()
         job.save()
+
+    finally:
+        connection.close()
 
 
 class GenerateIllustrationsView(views.APIView):
@@ -172,6 +177,19 @@ class GenerateIllustrationsView(views.APIView):
             "job_id": job.id,
             "status": "PENDING"
         }, status=200)
+    
+class IllustrationJobStatusView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, job_id):
+        job = get_object_or_404(IllustrationJob, id=job_id, story__user=request.user)
+        return Response({
+            "job_id": job.id,
+            "status": job.status,
+            "completed_pages": job.completed_pages,
+            "total_pages": job.total_pages,
+            "error_message": job.error_message,
+        })
     
 class IllustrationDownloadView(views.APIView):
     permission_classes = [IsAuthenticated]
