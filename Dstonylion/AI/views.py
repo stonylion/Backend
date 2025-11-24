@@ -5,7 +5,6 @@ from uuid import uuid4
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import views, status
-import threading
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 
@@ -32,7 +31,6 @@ def safe_filename(s: str) -> str:
 
 
 def run_illustration_job(job_id):
-    connection.close()
     job = IllustrationJob.objects.get(id=job_id)
     story = job.story
     
@@ -40,7 +38,6 @@ def run_illustration_job(job_id):
     job.started_at = timezone.now()
     job.save(update_fields=["status", "started_at"])
 
-    # 여기 기존 코드 그대로 복사해서 넣으면 됨
     try:
         style = story.illustration_style or "watercolor"
 
@@ -53,26 +50,20 @@ def run_illustration_job(job_id):
         style_text = style_map.get(style, style_map["watercolor"])
 
         pages = story.pages.all().order_by("page_number")
-        total_pages = len(pages)
 
         safe_title = safe_filename(story.title)
         story_context = "\n".join([f"Page {p.page_number}: {p.text}" for p in pages])
 
         # =====================
-        # 0) COVER 생성
+        # COVER 생성
         # =====================
         cover_prompt = f"""
             Create a safe and friendly whimsical fantasy illustration for a story titled "{story.title}". 
             The illustration MUST be {style_text}.
-
-            Important safety rules:
             - Do NOT depict real children or minors.
-            - Use stylized fictional animals, creatures, or fantasy beings only.
-            - The artwork must be non-realistic and safe.
-
-            Story context (brief):
+            Story context:
             {story_context}
-            """
+        """
 
         cover_result = client.images.generate(
             model="gpt-image-1",
@@ -83,8 +74,7 @@ def run_illustration_job(job_id):
         cover_bytes = base64.b64decode(cover_b64)
 
         cover_filename = f"{safe_title}_cover_{uuid4().hex[:8]}.png"
-        file_obj = ContentFile(cover_bytes)
-        cover_s3_path = default_storage.save(cover_filename, file_obj)
+        cover_s3_path = default_storage.save(cover_filename, ContentFile(cover_bytes))
 
         Illustrations.objects.create(
             story_page=None,
@@ -94,40 +84,37 @@ def run_illustration_job(job_id):
             style=style
         )
 
+        # COVER 상태 업데이트
+        cover_status = job.page_status.get(page_number=0)
+        cover_status.status = "SUCCESS"
+        cover_status.save()
+
         job.completed_pages = 1
         job.save()
 
         # =====================
-        # 1) 페이지 삽화 생성 (loop)
+        # 페이지 삽화 생성 루프
         # =====================
-        \
         for idx, page in enumerate(pages, start=1):
+
             page_prompt = f"""
             Create a whimsical fantasy illustration for page {page.page_number}.
-            The style MUST be {style_text}.
-
-            Important:
-            - Do NOT depict real children or minors.
-            - Use only fictional creatures, stylized characters, or animals.
-            - The illustration must be non-realistic and safe.
-
-            General story context:
+            MUST be {style_text}.
+            - Do NOT depict real children.
+            Story context:
             {story_context}
             """
-            
-            
+
             result = client.images.generate(
                 model="gpt-image-1",
                 prompt=page_prompt,
                 size="1536x1024"
             )
 
-            b64 = result.data[0].b64_json
-            img_bytes = base64.b64decode(b64)
+            img_bytes = base64.b64decode(result.data[0].b64_json)
 
             filename = f"{safe_title}_p{page.page_number}_{uuid4().hex[:8]}.png"
-            file_obj = ContentFile(img_bytes)
-            s3_path = default_storage.save(filename, file_obj)
+            s3_path = default_storage.save(filename, ContentFile(img_bytes))
 
             Illustrations.objects.create(
                 story=story,
@@ -136,17 +123,11 @@ def run_illustration_job(job_id):
                 prompt=page_prompt,
                 style=style
             )
-            # COVER 업데이트
-            cover_status = job.page_status.get(page_number=0)
-            cover_status.status = "SUCCESS"
-            cover_status.save()
 
-            # 페이지 RUNNING → SUCCESS
+            # ===============================
+            # 페이지 상태 업데이트
+            # ===============================
             page_status = job.page_status.get(page_number=page.page_number)
-            page_status.status = "RUNNING"
-            page_status.save()
-
-            # 이미지 생성 완료 후 SUCCESS
             page_status.status = "SUCCESS"
             page_status.save()
 
@@ -156,8 +137,6 @@ def run_illustration_job(job_id):
         job.status = "SUCCESS"
         job.finished_at = timezone.now()
         job.save()
-        
-
 
     except Exception as e:
         job.status = "FAILED"
@@ -165,8 +144,7 @@ def run_illustration_job(job_id):
         job.finished_at = timezone.now()
         job.save()
 
-    finally:
-        connection.close()
+
 
 def run_single_page_job(job_id, page_number):
     job = IllustrationJob.objects.get(id=job_id)
@@ -238,9 +216,6 @@ def run_single_page_job(job_id, page_number):
         job.finished_at = timezone.now()
         job.save()
 
-    finally:
-        connection.close()
-
 
 class GenerateIllustrationsView(views.APIView):
     permission_classes = [IsAuthenticated]
@@ -258,30 +233,27 @@ class GenerateIllustrationsView(views.APIView):
         if total_pages == 0:
             return Response({"detail": "No pages in story"}, status=400)
 
-        # 1) Job 생성
         job = IllustrationJob.objects.create(
             story=story,
-            total_pages=total_pages + 1,  # cover 포함
+            total_pages=total_pages + 1,
             status="PENDING",
         )
 
-        # 2) JobPage 기록 생성
-        IllustrationJobPage.objects.create(job=job, page_number=0, status="PENDING")   # COVER
-
+        IllustrationJobPage.objects.create(job=job, page_number=0, status="PENDING")
         for p in pages:
             IllustrationJobPage.objects.create(job=job, page_number=p.page_number, status="PENDING")
 
-        # 3) 백그라운드 작업 실행
-        threading.Thread(
-            target=run_illustration_job,
-            args=(job.id,),
-            daemon=True,
-        ).start()
+        # 실행
+        run_illustration_job(job.id)
 
-        # 4) 즉시 응답
+        # ===============================
+        # 🔥 수정됨: job 상태 즉시 갱신
+        # ===============================
+        job.refresh_from_db()
+
         return Response({
             "job_id": job.id,
-            "status": "PENDING"
+            "status": job.status   # 🔥 수정됨: 항상 최신 상태로 응답
         }, status=200)
 
     
