@@ -100,7 +100,7 @@ def run_illustration_job(job_id):
         # =====================
         # 1) 페이지 삽화 생성 (loop)
         # =====================
-        safe_page_text = re.sub(r"(아이|어린이|아기|친구|울|뛰|fall|child|kid|baby)", "", page.text, flags=re.I)
+        \
         for idx, page in enumerate(pages, start=1):
             page_prompt = f"""
             Create a whimsical fantasy illustration for page {page.page_number}.
@@ -113,9 +113,6 @@ def run_illustration_job(job_id):
 
             General story context:
             {story_context}
-
-            Short page idea:
-            "{safe_page_text}"
             """
             
             
