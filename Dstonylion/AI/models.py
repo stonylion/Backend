@@ -4,6 +4,7 @@ from accounts.models import *
 from story.models import *
 from django.utils import timezone
 from story.models import Story, StoryPage
+import uuid
 
 class IllustrationJob(models.Model):
     STYLE_CHOICES = [
@@ -58,3 +59,19 @@ class StoryExtension(models.Model):
 
     def __str__(self):
         return f"Extension for {self.story.title} ({self.status})"
+
+class ExtendChat(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="extend_conversations")
+    can_finalize = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+class ExtendMessage(models.Model):
+    chat = models.ForeignKey(ExtendChat, on_delete=models.CASCADE, related_name="messages")
+    role = models.CharField(max_length=20)  # "user" | "assistant" | "system"
+    content = models.TextField()
+    input_modality = models.CharField(max_length=10, blank=True, null=True)  # "text" | "voice"
+    order = models.PositiveIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
