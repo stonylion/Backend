@@ -5,6 +5,7 @@ from uuid import uuid4
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import views, status
+import threading
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 
@@ -28,17 +29,17 @@ SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 def safe_filename(s: str) -> str:
     return SAFE_FILENAME_RE.sub("_", s.strip())[:80] or "story"
 
-class GenerateIllustrationsView(views.APIView):
-    permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        story_id = request.data.get("story_id")
-        story = Story.objects.filter(id=story_id).first()
+def run_illustration_job(job_id):
+    job = IllustrationJob.objects.get(id=job_id)
+    story = job.story
+    
+    job.status = "RUNNING"
+    job.started_at = timezone.now()
+    job.save(update_fields=["status", "started_at"])
 
-        if not story:
-            return Response({"detail": "Story not found"}, status=404)
-        
-        # 1) story 앱에서 저장한 스타일 가져오기
+    # 여기 기존 코드 그대로 복사해서 넣으면 됨
+    try:
         style = story.illustration_style or "watercolor"
 
         style_map = {
@@ -49,118 +50,129 @@ class GenerateIllustrationsView(views.APIView):
         }
         style_text = style_map.get(style, style_map["watercolor"])
 
-        # 2) 모든 페이지 가져오기
+        pages = story.pages.all().order_by("page_number")
+        total_pages = len(pages)
+
+        safe_title = safe_filename(story.title)
+        story_context = "\n".join([f"Page {p.page_number}: {p.text}" for p in pages])
+
+        # =====================
+        # 0) COVER 생성
+        # =====================
+        cover_prompt = f"""
+        Create a cover illustration for a children's storybook titled "{story.title}". 
+        The illustration MUST be {style_text}.
+        Story context:
+        {story_context}
+        """
+
+        cover_result = client.images.generate(
+            model="gpt-image-1",
+            prompt=cover_prompt,
+            size="1536x1024"
+        )
+        cover_b64 = cover_result.data[0].b64_json
+        cover_bytes = base64.b64decode(cover_b64)
+
+        cover_filename = f"{safe_title}_cover_{uuid4().hex[:8]}.png"
+        file_obj = ContentFile(cover_bytes)
+        cover_s3_path = default_storage.save(cover_filename, file_obj)
+
+        Illustrations.objects.create(
+            story_page=None,
+            story=story,
+            image=cover_s3_path,
+            prompt=cover_prompt,
+            style=style
+        )
+
+        job.completed_pages = 1
+        job.save()
+
+        # =====================
+        # 1) 페이지 삽화 생성 (loop)
+        # =====================
+        for idx, page in enumerate(pages, start=1):
+            page_prompt = f"""
+            Create an illustration for page {page.page_number}.
+            MUST be {style_text}.
+            Context:
+            {story_context}
+            Page text: "{page.text}"
+            """
+
+            result = client.images.generate(
+                model="gpt-image-1",
+                prompt=page_prompt,
+                size="1536x1024"
+            )
+
+            b64 = result.data[0].b64_json
+            img_bytes = base64.b64decode(b64)
+
+            filename = f"{safe_title}_p{page.page_number}_{uuid4().hex[:8]}.png"
+            file_obj = ContentFile(img_bytes)
+            s3_path = default_storage.save(filename, file_obj)
+
+            Illustrations.objects.create(
+                story_page=page,
+                image=s3_path,
+                prompt=page_prompt,
+                style=style
+            )
+
+            job.completed_pages = idx + 1
+            job.save()
+
+        job.status = "SUCCESS"
+        job.finished_at = timezone.now()
+        job.save()
+
+    except Exception as e:
+        job.status = "FAILED"
+        job.error_message = str(e)
+        job.finished_at = timezone.now()
+        job.save()
+
+
+class GenerateIllustrationsView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        story_id = request.data.get("story_id")
+        story = Story.objects.filter(id=story_id).first()
+
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+
+        # 페이지 수
         pages = story.pages.all().order_by("page_number")
         total_pages = len(pages)
 
         if total_pages == 0:
             return Response({"detail": "No pages in story"}, status=400)
 
-        # 3) 삽화 생성 Job 생성
+        # 1) Job 생성 (처음엔 PENDING)
         job = IllustrationJob.objects.create(
             story=story,
             total_pages=total_pages + 1,
-            status="RUNNING",
-            started_at=timezone.now()
+            status="PENDING",   # 중요!!
+            created_at=timezone.now(),
         )
-        safe_title = safe_filename(story.title)
 
-        # 5) 전체 스토리 컨텍스트
-        story_context = "\n".join([f"Page {p.page_number}: {p.text}" for p in pages])
+        # 2) 백그라운드에서 실행할 실제 작업 함수 호출
+        threading.Thread(
+            target=run_illustration_job,
+            args=(job.id,),
+            daemon=True
+        ).start()
 
-        try:
-            # ----------------------------
-            # 🎨 0) 표지(Cover Image) 생성
-            # ----------------------------
-
-            cover_prompt = f"""
-            Create a cover illustration for a children's storybook titled "{story.title}". 
-            The illustration MUST be {style_text}.
-            The story's overall theme and mood are as follows:
-
-            {story_context}
-
-            Make it visually appealing as a cover and consistent with the world of the story.
-            """
-
-            cover_result = client.images.generate(
-                model="gpt-image-1",
-                prompt=cover_prompt,
-                size="1536x1024"
-            )
-            cover_b64 = cover_result.data[0].b64_json
-            cover_bytes = base64.b64decode(cover_b64)
-
-            cover_filename = f"{safe_title}_cover_{uuid4().hex[:8]}.png"
-            file_obj = ContentFile(cover_bytes)
-            cover_s3_path = default_storage.save(cover_filename, file_obj)
-
-            # 표지는 story_page가 없으므로 story에 직접 연결할 수도 있음
-            # 하지만 기존 DB 구조를 유지하려면 page 0으로 저장하는 방식 가능:
-            Illustrations.objects.create(
-                story_page=None,
-                story=story,
-                image=cover_s3_path,
-                prompt=cover_prompt,
-                style=style
-            )
-
-            job.completed_pages = 1
-            job.save(update_fields=["completed_pages"])
-
-            # ----------------------------
-            # 🎨 1) 본문 페이지 삽화 생성 (Loop)
-            # ----------------------------
-            for idx, page in enumerate(pages, start=1):
-                page_prompt = f"""
-            Create an illustration for page {page.page_number} of a children's storybook.
-            The illustration MUST be {style_text}.
-
-            Story context for coherence:
-            {story_context}
-
-            Page content:
-            "{page.text}"
-
-            Keep character appearance, colors, and atmosphere consistent with the cover and other pages.
-            """
-
-                page_result = client.images.generate(
-                    model="gpt-image-1",
-                    prompt=page_prompt,
-                    size="1536x1024"
-                )
-
-                b64 = page_result.data[0].b64_json
-                img_bytes = base64.b64decode(b64)
-
-                filename = f"{safe_title}_p{page.page_number}_{uuid4().hex[:8]}.png"
-                file_obj = ContentFile(img_bytes)
-                s3_path = default_storage.save(filename, file_obj)
-
-                Illustrations.objects.create(
-                    story_page=page,
-                    image=s3_path,
-                    prompt=page_prompt,
-                    style=style
-                )
-
-                job.completed_pages = idx + 1  # +1 because cover already counted
-                job.save(update_fields=["completed_pages"])
-
-            job.status = "SUCCESS"
-            job.finished_at = timezone.now()
-            job.save()
-
-            return Response({"job": IllustrationJobSerializer(job).data}, status=200)
-
-        except Exception as e:
-            job.status = "FAILED"
-            job.error_message = str(e)
-            job.finished_at = timezone.now()
-            job.save()
-            return Response({"error": str(e)}, status=500)
-        
+        # 3) 사용자에게 즉시 응답
+        return Response({
+            "job_id": job.id,
+            "status": "PENDING"
+        }, status=200)
+    
 class IllustrationDownloadView(views.APIView):
     permission_classes = [IsAuthenticated]
 

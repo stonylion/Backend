@@ -411,8 +411,9 @@ class ClonedVoiceTTSView(APIView):
     title + author + 각 page.text를 사용자 목소리로 TTS 합성
     """
     permission_classes = [IsAuthenticated]
+    BASE_DIR = settings.BASE_DIR
 
-    MODEL_DIR = "/app/models/checkpoints_v2"
+    MODEL_DIR = "/app/Dstonylion/checkpoints_v2"
 
     BASE_SPEAKER_AUDIO = os.path.join(MODEL_DIR, "base_speakers", "base_ko.wav")
     BASE_SPEAKER_SE    = os.path.join(MODEL_DIR, "base_speakers", "ses", "kr.pth")
