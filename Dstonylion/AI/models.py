@@ -67,6 +67,8 @@ class ExtendChat(models.Model):
     can_finalize = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
+    user_token_count = models.IntegerField(default=0)
+    is_continuing = models.BooleanField(default=False)
 
 class ExtendMessage(models.Model):
     chat = models.ForeignKey(ExtendChat, on_delete=models.CASCADE, related_name="messages")

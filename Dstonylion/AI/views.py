@@ -20,6 +20,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from dotenv import load_dotenv
 from openai import OpenAI
+import tiktoken
 
 from .models import *
 from .serializers import *
@@ -221,18 +222,24 @@ class IllustrationDownloadView(views.APIView):
             "download_url": presigned_url
         }, status=200)
         
+HARD_MIN_USER_TOKENS = 200
+FINALIZE_SUFFIX = "이제 결말을 확장해도 될까?"
+
 STORY_ENGINE_SYSTEM_PROMPT = r"""
 너는 '명작 동화 결말 확장'을 위한 대화형 AI다.
 사용자(아이)와의 대화를 통해 기존 동화의 결말 이후 이야기를 확장하기 위한 정보를 수집한다.
 아래 규칙들을 반드시 지켜라.
 
 [챗봇 질문 설계 규칙]
-- 매 질문은 100토큰 이상이 생성될 정도로 풍부하고 구체적인 개방형 질문으로 할 것.
+- 매 질문은 100토큰 이상 150토큰 이하로 풍부하고 구체적인 개방형 질문으로 할 것.
+- 전체 질문 및 답변은 3문장 이내로 할 것.
+- 질문을 할 때는 한 차례에 하나의 질문만 할 것.
 - 반드시 결말 시점 이후 확장에 대한 질문을 할 것. (“결말 이후에 ~”, “그 다음엔 ~”)
 - 예/아니오 질문 금지. “만약 ~라면?”, “어떻게 될까?”, “무슨 일이 일어날까?”
 - 아이 답이 모호하면 사건/배경/감정/의도 등 구체화 후속질문으로 보완.
 - 이미 물어본 질문 반복 금지.
 - 질문 자체에는 "이제 결말을 확장해도 될까?"를 절대 붙이지 말 것.
+- 질문 및 답변 생성 이후 생성된 글이 150토큰 이하인지 확인한 후 150토큰을 넘는다면 답변 재생성할 것.
 
 [서사 생성 프로세스]
 ① Story Forming
@@ -279,6 +286,7 @@ def get_or_create_chat(user, story, chat_id=None):
         can_finalize=False,
         created_at=timezone.now(),
         updated_at=timezone.now(),
+        user_token_count=0,
     )
     return chat, True
 
@@ -301,18 +309,31 @@ def save_message(chat, role, content, input_modality=None):
     chat.save()
 
 FINALIZE_CHECK_PROMPT = r"""
-너는 대화 로그를 보고 결말 확장에 필요한 정보가 충분한지 판단하는 심사관이다.
+너는 결말 확장 가능 여부를 판단하는 심사관이다.
+
+입력은 '사용자(user) 발화 목록'만 주어진다.
+assistant의 질문/답변은 절대 고려하지 마라.
+
+판정 기준:
+- 사용자가 결말 이후에 대해 충분히 구체적으로 상상/설명했는가?
+- 등장인물, 사건, 배경, 감정/목표 중 2가지 이상이 실제로 언급되었는가?
+- 단답/짧은 반응 위주면 false.
+
 JSON 한 줄:
 {"can_finalize": true/false, "reason": "짧은 이유"}
 """
+def user_only(messages):
+    return [m for m in messages if m.get("role") == "user"]
 
 def check_can_finalize(messages):
+    user_msgs = [m for m in messages if m.get("role") == "user"]
+
     try:
         resp = client.responses.create(
             model="gpt-5.1",
             input=[
                 {"role": "system", "content": FINALIZE_CHECK_PROMPT},
-                {"role": "user", "content": json.dumps(messages, ensure_ascii=False)}
+                {"role": "user", "content": json.dumps(user_msgs, ensure_ascii=False)}
             ],
             temperature=0.2,
             max_output_tokens=120,
@@ -338,13 +359,46 @@ def is_question_text(text: str) -> bool:
                 {"role": "user", "content": text}
             ],
             temperature=0,
-            max_output_tokens=20,
+            max_output_tokens=100,
         )
         data = json.loads(resp.output_text.strip())
         return bool(data.get("is_question"))
     except Exception:
         t = text.strip()
         return ("?" in t[-3:]) or t.endswith(("까", "니", "나요", "까요", "할래", "어때"))
+
+def count_tokens(text: str) -> int:
+    enc = tiktoken.get_encoding("cl100k_base")
+    return len(enc.encode(text))
+
+OPENING_PROMPT = r"""
+너는 아이에게 '결말 확장 대화'를 시작하는 친근한 오프닝을 만드는 도우미다.
+
+요구사항:
+- 반드시 원작 동화의 마지막 결말 이후를 떠올리게 하는 말이 포함될 것.
+- 아이가 바로 상상해서 말할 수 있도록 결말 이후 질문 1개를 포함할 것.
+- 2~3문장, 아동 친화적, 자연스러운 한국어.
+- 특정 캐릭터/사건 언급은 '주어진 동화 내용에 실제로 등장하는 것만' 사용.
+- 출력은 오프닝 문장 텍스트만.
+
+동화 제목과 내용이 주어진다.
+"""
+
+def generate_opening(story: Story) -> str:
+    try:
+        resp = client.responses.create(
+            model="gpt-5 nano",
+            input=[
+                {"role": "system", "content": OPENING_PROMPT},
+                {"role": "user", "content": f"동화 제목: {story.title}\n동화 내용:\n{story.content}"}
+            ],
+            temperature=0.8,
+            max_output_tokens=180,
+        )
+        text = resp.output_text.strip()
+        return text or f"<{story.title}> 재미있었니? 결말 이후엔 어떤 일이 일어날지 상상해볼까?"
+    except Exception:
+        return f"<{story.title}> 재미있었니? 결말 이후엔 어떤 일이 일어날지 상상해볼까?"
 
 class ExtendChatStreamView(views.APIView):
     permission_classes = [IsAuthenticated]
@@ -358,11 +412,72 @@ class ExtendChatStreamView(views.APIView):
         chat_id = request.data.get("chat_id")
         user_text = (request.data.get("user_message") or "").strip()
         modality = request.data.get("input_modality") or "text"
+        action = request.data.get("action")
+
+        if chat_id and action == "continue" and not user_text:
+            chat, _ = get_or_create_chat(request.user, story, chat_id=chat_id)
+
+            messages = load_messages(chat)
+            tone_dummy = load_tone_dummy_text()
+
+            static_prefix = [
+                {"role": "system", "content": STORY_ENGINE_SYSTEM_PROMPT},
+                {"role": "system", "content": f"원작 동화 제목: {story.title}\n원작 동화 내용(결말 포함):\n{story.content}"},
+            ]
+            if tone_dummy.strip():
+                static_prefix.append({"role": "system", "content": f"[톤 참고 더미 동화]\n{tone_dummy}"})
+
+            continue_directive = {
+                "role": "system",
+                "content": "지금은 사용자가 '더 대화하기'를 눌렀다. 반드시 새 질문을 1개만 하라."
+            }
+
+            resp = client.responses.create(
+                model="gpt-5.1",
+                input=static_prefix + messages + [continue_directive],
+                temperature=0.8,
+                max_output_tokens=200,
+                stream=False,
+            )
+            assistant_text = resp.output_text.strip()
+
+            if not is_question_text(assistant_text):
+                assistant_text = (assistant_text + "\n\n그 다음엔 어떤 일이 더 일어날까?").strip()
+
+            assistant_text = f"그럼 조금 더 이야기해보자!\n\n{assistant_text}".strip()
+
+            save_message(chat, "assistant", assistant_text)
+
+            return Response({
+                "text": assistant_text,
+                "chat_id": str(chat.id),
+                "can_finalize": False,
+                "reason": "continue_question",
+                "user_token_count": chat.user_token_count
+            }, status=200)
+
+        if not chat_id and not user_text:
+            chat, _ = get_or_create_chat(request.user, story, chat_id=None)
+
+            opening = generate_opening(story)   # 동화 커스터마이징 오프닝
+            save_message(chat, "assistant", opening)
+
+            return Response({
+                "text": opening,
+                "chat_id": str(chat.id),
+                "can_finalize": False,
+                "reason": "first_opening",
+                "user_token_count": getattr(chat, "user_token_count", 0)
+            }, status=200)
 
         if not user_text:
             return Response({"detail": "user_message required"}, status=400)
 
         chat, _ = get_or_create_chat(request.user, story, chat_id=chat_id)
+
+        token_count = count_tokens(user_text)
+        chat.user_token_count = getattr(chat, "user_token_count", 0) + token_count
+        chat.save()
 
         # (1) user 메시지 DB 저장
         save_message(chat, "user", user_text, input_modality=modality)
@@ -374,7 +489,7 @@ class ExtendChatStreamView(views.APIView):
         # (3) 톤 더미 로딩 (정적 prefix에 포함되므로 항상 같은 내용이어야 캐시됨)
         tone_dummy = load_tone_dummy_text()
 
-        # (4) ✅ 정적 prefix를 항상 동일한 순서/형태로 구성
+        # (4) 정적 prefix를 항상 동일한 순서/형태로 구성
         #     (OpenAI Prompt Caching은 같은 prefix 반복 시 자동으로 캐시 적용) :contentReference[oaicite:1]{index=1}
         static_prefix = [
             {"role": "system", "content": STORY_ENGINE_SYSTEM_PROMPT},
@@ -385,6 +500,56 @@ class ExtendChatStreamView(views.APIView):
 
         model_input = static_prefix + messages
 
+        stream_flag = modality == "voice"
+        qp = request.query_params.get("stream")
+        if qp is not None:
+            stream_flag = qp.lower() == "true"
+
+        # (6) 텍스트 모드일 때 → 풀 문장 응답(JSON)
+        if not stream_flag:
+            resp = client.responses.create(
+                model="gpt-5.1",
+                input=model_input,
+                temperature=0.8,
+                max_output_tokens=200,
+                stream=False,
+            )
+
+            assistant_text = resp.output_text.strip()
+
+            if chat.user_token_count < HARD_MIN_USER_TOKENS:
+                can_finalize = False
+                reason = f"user_tokens<{HARD_MIN_USER_TOKENS}"
+            else:
+                if not can_finalize:
+                    user_msgs = user_only(messages)
+                    can_finalize, reason = check_can_finalize(user_msgs)
+                else:
+                    reason = "already true"
+
+            is_q = is_question_text(assistant_text)
+            if can_finalize:
+                if is_q:
+                    assistant_text = f"좋아!\n\n{FINALIZE_SUFFIX}"
+                else:
+                    if FINALIZE_SUFFIX not in assistant_text:
+                        assistant_text = (assistant_text + "\n\n" + FINALIZE_SUFFIX).strip()
+
+            save_message(chat, "assistant", assistant_text)
+
+            if can_finalize and not chat.can_finalize:
+                chat.can_finalize = True
+                chat.save()
+
+            return Response({
+                "text": assistant_text,
+                "chat_id": str(chat.id),
+                "can_finalize": can_finalize,
+                "reason": reason,
+                "user_token_count": chat.user_token_count
+            }, status=200)
+
+        # (7) 음성 모드 → 기존 SSE(chunk) 스트리밍
         def sse_gen():
             nonlocal can_finalize, messages
             assistant_accum = []
@@ -394,47 +559,68 @@ class ExtendChatStreamView(views.APIView):
                     model="gpt-5.1",
                     input=model_input,
                     temperature=0.8,
-                    max_output_tokens=700,
+                    max_output_tokens=200,
                     stream=True,
                 )
 
-                # chunk 스트리밍
                 for event in stream:
                     if event.type == "response.output_text.delta":
                         delta = event.delta or ""
                         assistant_accum.append(delta)
-                        yield f"data: {json.dumps({'type':'chunk','text':delta}, ensure_ascii=False)}\n\n"
+                        yield (
+                            "data: "
+                            + json.dumps({"type": "chunk", "text": delta}, ensure_ascii=False)
+                            + "\n\n"
+                        )
 
                 assistant_text = "".join(assistant_accum).strip()
 
-                # can_finalize 사후 판정 (false일 때만)
-                if not can_finalize:
-                    can_finalize, reason = check_can_finalize(
-                        messages + [{"role": "assistant", "content": assistant_text}]
-                    )
+                # (A) 하드 게이트
+                if chat.user_token_count < HARD_MIN_USER_TOKENS:
+                    can_finalize = False
+                    reason = f"user_tokens<{HARD_MIN_USER_TOKENS}"
                 else:
-                    reason = "already true"
+                    # (B) 200 이상일 때만 판정(user_only)
+                    if not can_finalize:
+                        user_msgs = user_only(messages)
+                        can_finalize, reason = check_can_finalize(user_msgs)
+                    else:
+                        reason = "already true"
 
-                # 질문/대답 구분 후 문구 붙이기
-                suffix = "이제 결말을 확장해도 될까?"
-                is_question = is_question_text(assistant_text)
+                # (C) true면 suffix 강제 + 질문 제거
+                is_q = is_question_text(assistant_text)
+                if can_finalize:
+                    if is_q:
+                        assistant_text = f"좋아!\n\n{FINALIZE_SUFFIX}"
+                    else:
+                        if FINALIZE_SUFFIX not in assistant_text:
+                            assistant_text = (assistant_text + "\n\n" + FINALIZE_SUFFIX).strip()
 
-                if can_finalize and (not is_question):
-                    if suffix not in assistant_text:
-                        assistant_text = (assistant_text + "\n\n" + suffix).strip()
-
-                # assistant 메시지 DB 저장
                 save_message(chat, "assistant", assistant_text)
 
-                # can_finalize DB 반영
                 if can_finalize and not chat.can_finalize:
                     chat.can_finalize = True
                     chat.save()
 
-                yield f"data: {json.dumps({'type':'meta','chat_id':str(chat.id),'can_finalize':can_finalize,'reason':reason}, ensure_ascii=False)}\n\n"
+                # meta 이벤트
+                yield (
+                    "data: "
+                    + json.dumps({
+                        "type": "meta",
+                        "chat_id": str(chat.id),
+                        "can_finalize": can_finalize,
+                        "reason": reason,
+                        "user_token_count": chat.user_token_count
+                    }, ensure_ascii=False)
+                    + "\n\n"
+                )
 
             except Exception as e:
-                yield f"data: {json.dumps({'type':'error','message':str(e)}, ensure_ascii=False)}\n\n"
+                yield (
+                    "data: "
+                    + json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
+                    + "\n\n"
+                )
 
         return StreamingHttpResponse(sse_gen(), content_type="text/event-stream")
     
@@ -492,6 +678,7 @@ EXTEND_STORY_PROMPT = r"""
 - 결말 이후 사건 확장.
 - 아동 친화적 톤.
 - 3막(Signpost/Journey)을 갖춘 이야기.
+- 확장 동화 텍스트에서 제목, '1막:', '2막:', '3막:'과 같은 불필요한 단어 및 문장부호는 생략.
 
 출력 JSON:
 {
@@ -512,15 +699,15 @@ class ExtendStoryCreateView(views.APIView):
         if not original:
             return Response({"detail": "Story not found"}, status=404)
 
-        conv_id = request.data.get("conversation_id")
-        if not conv_id:
-            return Response({"detail": "conversation_id required"}, status=400)
+        chat_id = request.data.get("chat_id")
+        if not chat_id:
+            return Response({"detail": "chat_id required"}, status=400)
 
-        conv = ExtendChat.objects.filter(id=conv_id, user=request.user, story=original).first()
-        if not conv:
-            return Response({"detail": "Conversation not found"}, status=404)
+        chat = ExtendChat.objects.filter(id=chat_id, user=request.user, story=original).first()
+        if not chat:
+            return Response({"detail": "Chat not found"}, status=404)
 
-        messages = load_messages(conv)
+        messages = load_messages(chat)
         tone_dummy = load_tone_dummy_text()
 
         static_prefix = [
@@ -532,7 +719,7 @@ class ExtendStoryCreateView(views.APIView):
 
         try:
             resp = client.responses.create(
-                model="gpt-5 nano",
+                model="gpt-4.1-mini",
                 input=static_prefix + [{"role": "user", "content": json.dumps(messages, ensure_ascii=False)}],
                 temperature=0.9,
                 max_output_tokens=2000,
@@ -549,20 +736,26 @@ class ExtendStoryCreateView(views.APIView):
         runtime = data.get("runtime") or original.runtime
         age_group = data.get("age_group") or original.age_group
 
+        combined_content = (
+            (original.content or "").strip()
+            + "\n\n"
+            + ext_content
+        ).strip()
+
         new_story = Story.objects.create(
             user=request.user,
             child=original.child,
             voice=original.voice,
             title=ext_title,
             author=request.user.username,
-            content=ext_content,
+            content=combined_content,
             category="extended",
             runtime=runtime,
             age_group=age_group,
             illustration_style=request.data.get("illustration_style") or original.illustration_style
         )
 
-        pages = split_into_pages(ext_content)
+        pages = split_into_pages(combined_content)
         for idx, page_text in enumerate(pages, start=1):
             StoryPage.objects.create(
                 story=new_story,
