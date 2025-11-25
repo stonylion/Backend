@@ -6,6 +6,7 @@ urlpatterns = [
     path("illustration/download/<int:story_id>/<int:page_id>/", IllustrationDownloadView.as_view()),
     
     path("stories/<int:story_id>/extend-chat/stream/", ExtendChatStreamView.as_view()),
+    path("stories/<int:story_id>/extend-chat/voice/", VoiceExtendChatView.as_view()),
     path("stories/<int:story_id>/extend/", ExtendStoryCreateView.as_view()),
     path("stories/<int:extended_id>/continue-from/<int:original_id>/", ContinueFromView.as_view()),
 
