@@ -1,6 +1,7 @@
 from django.shortcuts import render
-import os, json, base64, re, random, uuid
+import os, json, base64, re, random, uuid, tempfile
 from uuid import uuid4
+from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
@@ -11,6 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.http import StreamingHttpResponse
 
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.core.files.storage import default_storage
 
 from rest_framework.response import Response
@@ -353,7 +355,7 @@ JSON 한 줄:
 def is_question_text(text: str) -> bool:
     try:
         resp = client.responses.create(
-            model="gpt-5 nano",
+            model="gpt-4.1-mini",
             input=[
                 {"role": "system", "content": QUESTION_CHECK_PROMPT},
                 {"role": "user", "content": text}
@@ -387,7 +389,7 @@ OPENING_PROMPT = r"""
 def generate_opening(story: Story) -> str:
     try:
         resp = client.responses.create(
-            model="gpt-5 nano",
+            model="gpt-4.1-mini",
             input=[
                 {"role": "system", "content": OPENING_PROMPT},
                 {"role": "user", "content": f"동화 제목: {story.title}\n동화 내용:\n{story.content}"}
@@ -623,7 +625,155 @@ class ExtendChatStreamView(views.APIView):
                 )
 
         return StreamingHttpResponse(sse_gen(), content_type="text/event-stream")
-    
+
+def delete_chat_audio_folder(chat_id):
+    """
+    default_storage에서 extendchat/<chat_id>/ 아래의 파일들을 모두 삭제.
+    (S3든 로컬이든 Storage API 기준으로 동작)
+    """
+    base_dir = f"extendchat/{chat_id}"
+
+    if not default_storage.exists(base_dir):
+        return
+
+    def _delete_dir(path):
+        # dirs: 하위 폴더 목록, files: 해당 경로의 파일 목록
+        dirs, files = default_storage.listdir(path)
+
+        # 파일 삭제
+        for name in files:
+            file_path = f"{path}/{name}"
+            if default_storage.exists(file_path):
+                default_storage.delete(file_path)
+
+        for d in dirs:
+            _delete_dir(f"{path}/{d}")
+
+    _delete_dir(base_dir)
+
+
+class VoiceExtendChatView(views.APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+
+        chat_id = request.data.get("chat_id")
+        voice = request.data.get("voice") or "alloy"  # TTS 목소리 선택 (옵션)
+        audio = request.FILES.get("audio")
+        if not audio:
+            return Response({"detail": "audio file required"}, status=400)
+
+        # 1) STT (whisper-1 + 임시 파일)
+        try:
+            suffix = Path(audio.name).suffix or ".mp3"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                for chunk in audio.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            with open(tmp_path, "rb") as f:
+                stt_resp = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                )
+            os.remove(tmp_path)
+
+            user_text = (stt_resp.text or "").strip()
+            if not user_text:
+                return Response({"detail": "empty transcript"}, status=400)
+
+        except Exception as e:
+            return Response({"detail": f"STT failed: {e}"}, status=500)
+
+        # 2) ExtendChat 로직 (텍스트 기반과 동일)
+        chat, _ = get_or_create_chat(request.user, story, chat_id=chat_id)
+
+        token_count = count_tokens(user_text)
+        chat.user_token_count = getattr(chat, "user_token_count", 0) + token_count
+        chat.save()
+
+        save_message(chat, "user", user_text, input_modality="voice")
+
+        messages = load_messages(chat)
+        can_finalize = chat.can_finalize
+
+        tone_dummy = load_tone_dummy_text()
+        static_prefix = [
+            {"role": "system", "content": STORY_ENGINE_SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": f"원작 동화 제목: {story.title}\n원작 동화 내용(결말 포함):\n{story.content}"
+            },
+        ]
+        if tone_dummy.strip():
+            static_prefix.append(
+                {"role": "system", "content": f"[톤 참고 더미 동화]\n{tone_dummy}"}
+            )
+
+        model_input = static_prefix + messages
+
+        try:
+            resp = client.responses.create(
+                model="gpt-5.1",
+                input=model_input,
+                temperature=0.8,
+                max_output_tokens=200,
+                stream=False,
+            )
+            assistant_text = resp.output_text.strip()
+        except Exception as e:
+            return Response({"detail": f"Chat failed: {e}"}, status=500)
+
+        if chat.user_token_count < HARD_MIN_USER_TOKENS:
+            can_finalize = False
+            reason = f"user_tokens<{HARD_MIN_USER_TOKENS}"
+        else:
+            if not can_finalize:
+                user_msgs = user_only(messages)
+                can_finalize, reason = check_can_finalize(user_msgs)
+            else:
+                reason = "already true"
+
+        is_q = is_question_text(assistant_text)
+        if can_finalize:
+            if is_q:
+                assistant_text = f"좋아!\n\n{FINALIZE_SUFFIX}"
+            else:
+                if FINALIZE_SUFFIX not in assistant_text:
+                    assistant_text = (assistant_text + "\n\n" + FINALIZE_SUFFIX).strip()
+
+        save_message(chat, "assistant", assistant_text)
+
+        if can_finalize and not chat.can_finalize:
+            chat.can_finalize = True
+            chat.save()
+
+        # 3) TTS (assistant_text → mp3 → URL)
+        audio_url = None
+        try:
+            audio_url = generate_tts_audio_http(
+                text=assistant_text,
+                voice=voice,
+                chat_id=str(chat.id),
+            )
+        except Exception as e:
+            reason = f"{reason} (TTS failed: {e})"
+            audio_url = None
+
+        return Response({
+            "text": assistant_text,          # AI 텍스트 답변
+            "user_text": user_text,          # STT 결과 (아이 발화)
+            "audio_url": audio_url,          # mp3 경로 (없을 수도 있음)
+            "chat_id": str(chat.id),
+            "can_finalize": can_finalize,
+            "reason": reason,
+            "user_token_count": chat.user_token_count
+        }, status=200)
+
 class STTView(views.APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -634,14 +784,76 @@ class STTView(views.APIView):
             return Response({"detail": "audio file required"}, status=400)
 
         try:
-            transcript = client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
-                file=audio
-            )
+            print("=== STT DEBUG ===")
+            print("name:", audio.name)
+            print("size:", audio.size)
+            print("type:", type(audio))
+            print("content_type:", audio.content_type)
+
+            # 1) 확장자 추출 (없으면 기본 .mp3)
+            suffix = Path(audio.name).suffix or ".mp3"
+
+            # 2) 임시파일에 저장
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                for chunk in audio.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            # 3) whisper-1 호출 (SDK가 100% 읽을 수 있는 “진짜 파일”로)
+            with open(tmp_path, "rb") as f:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f
+                )
+
+            # 4) 정리
+            os.remove(tmp_path)
+
             return Response({"text": transcript.text}, status=200)
+
         except Exception as e:
             return Response({"detail": f"STT failed: {e}"}, status=500)
-        
+
+import requests
+def generate_tts_audio_http(text: str, voice: str = "alloy", chat_id: str | None = None) -> str:
+    """
+    OpenAI TTS를 SDK 안 쓰고 HTTP로 직접 호출해서
+    default_storage에 저장 후 URL을 반환한다.
+    - chat_id가 있으면: extendchat/<chat_id>/ 아래에 저장
+    - chat_id가 없으면: tts/ 아래에 저장
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise Exception("OPENAI_API_KEY not set in settings")
+
+    url = "https://api.openai.com/v1/audio/speech"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "gpt-4o-mini-tts",
+        "voice": voice,
+        "input": text,
+    }
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    if resp.status_code != 200:
+        raise Exception(f"OpenAI TTS HTTP error {resp.status_code}: {resp.text}")
+
+    audio_bytes = resp.content  # 여기에 mp3 바이너리 그대로 옴
+
+    # 저장 경로: extendchat/<chat_id>/ or tts/
+    if chat_id:
+        folder = f"extendchat/{chat_id}"
+    else:
+        folder = "tts"
+
+    filename = f"{folder}/{uuid.uuid4()}.mp3"
+    saved_path = default_storage.save(filename, ContentFile(audio_bytes))
+    audio_url = default_storage.url(saved_path)
+    return audio_url
+
 class TTSView(views.APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
@@ -653,23 +865,16 @@ class TTSView(views.APIView):
             return Response({"detail": "text required"}, status=400)
 
         try:
-            audio_resp = client.audio.speech.create(
-                model="gpt-4o-mini-tts",
+            audio_url = generate_tts_audio_http(
+                text=text,
                 voice=voice,
-                input=text,
-                format="mp3",
+                chat_id=None,
             )
-            audio_bytes = audio_resp.read()
-
-            filename = f"tts/{uuid.uuid4()}.mp3"
-            saved_path = default_storage.save(filename, ContentFile(audio_bytes))
-            audio_url = default_storage.url(saved_path)
-
             return Response({"audio_url": audio_url}, status=200)
 
         except Exception as e:
             return Response({"detail": f"TTS failed: {e}"}, status=500)
-        
+
 EXTEND_STORY_PROMPT = r"""
 너는 명작 동화의 결말을 확장해 새 동화를 만드는 작가형 AI다.
 입력 대화 로그와 원작 동화를 바탕으로 '결말 이후 확장 동화'를 완성하라.
@@ -765,6 +970,8 @@ class ExtendStoryCreateView(views.APIView):
 
         new_story.page_count = len(pages)
         new_story.save()
+
+        delete_chat_audio_folder(chat_id)
 
         return Response(
             {"extended_story": StorySerializer(new_story).data},
