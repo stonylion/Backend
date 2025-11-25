@@ -4,6 +4,7 @@ from accounts.models import *
 from story.models import *
 from django.utils import timezone
 from story.models import Story, StoryPage
+import uuid
 
 class IllustrationJob(models.Model):
     STYLE_CHOICES = [
@@ -11,10 +12,6 @@ class IllustrationJob(models.Model):
         ("oil", "유화"), 
         ("crayon", "크레파스"),
         ("3d", "3D 애니메이션")
-    ]
-    JOB_TYPE_CHOICES = [
-        ("full", "전체 생성"),
-        ("regen", "페이지 재생성"),
     ]
     
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="ai_jobs")
@@ -26,28 +23,9 @@ class IllustrationJob(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
-    job_type = models.CharField(max_length=10, choices=JOB_TYPE_CHOICES, default="full")
 
     def __str__(self):
         return f"Illustrations for {self.story.title} ({self.status})"
-
-class IllustrationJobPage(models.Model):
-    job = models.ForeignKey(IllustrationJob, on_delete=models.CASCADE, related_name="page_status")
-    page_number = models.IntegerField()   # cover=0
-    status = models.CharField(
-        max_length=20,
-        choices=[
-            ("PENDING", "Pending"),
-            ("RUNNING", "Running"),
-            ("SUCCESS", "Success"),
-            ("FAILED", "Failed"),
-        ],
-        default="PENDING"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["page_number"]
 
 class ChatRoom(models.Model):
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="chatrooms")
@@ -81,3 +59,21 @@ class StoryExtension(models.Model):
 
     def __str__(self):
         return f"Extension for {self.story.title} ({self.status})"
+
+class ExtendChat(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="extend_conversations")
+    can_finalize = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+    user_token_count = models.IntegerField(default=0)
+    is_continuing = models.BooleanField(default=False)
+
+class ExtendMessage(models.Model):
+    chat = models.ForeignKey(ExtendChat, on_delete=models.CASCADE, related_name="messages")
+    role = models.CharField(max_length=20)  # "user" | "assistant" | "system"
+    content = models.TextField()
+    input_modality = models.CharField(max_length=10, blank=True, null=True)  # "text" | "voice"
+    order = models.PositiveIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
