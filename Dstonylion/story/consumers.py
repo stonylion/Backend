@@ -35,46 +35,42 @@ class DraftConsumer(AsyncJsonWebsocketConsumer):
     # -------------------------------
     async def connect(self):
         try:
-            await self.accept()
+            # 1) Query 파싱
+            qs = parse_qs(self.scope["query_string"].decode())
+            token = qs.get("token", [None])[0]
+            if not token:
+                raise ValueError("NO_TOKEN")
 
-            # QUERY STRING 파싱
-            query_string = self.scope["query_string"].decode()
-            qs = parse_qs(query_string)
-            token_list = qs.get("token", [])
-
-            if not token_list:
-                raise ValueError("토큰 없음")
-
-            token_str = token_list[0]
-            access = AccessToken(token_str)
+            # 2) JWT 인증
+            access = AccessToken(token)
             user_id = access["user_id"]
+            user = await self.get_user_from_token(user_id)
+            if not user:
+                raise ValueError("INVALID_USER")
+            self.scope["user"] = user
+            self.user = user
 
-            # User 객체 로드
-            self.scope["user"] = await self.get_user_from_token(user_id)
-            if not self.scope["user"]:
-                raise ValueError("유효하지 않은 사용자")
-
-            self.user = self.scope["user"]
-
-            # Redis 연결
+            # 3) Redis 연결
             self.redis = redis.StrictRedis(
                 host=settings.REDIS_HOST,
                 port=settings.REDIS_PORT,
                 db=0,
                 decode_responses=True,
-                ssl=True,                 # 🔥 필수 — TLS 활성화
-                ssl_cert_reqs=None,
+                ssl=settings.REDIS_SSL,
+                ssl_cert_reqs=None if settings.REDIS_SSL else None
             )
-            self.redis_draft_key = f"draft:{self.user.id}"
+            self.redis_draft_key = f"draft:{user.id}"
 
-            # 상태
-            self.paused = False
+            # ⭐ 4) 모든 검증 완료 후에 accept()
+            await self.accept()
 
+            # 5) 이제 메시지 전송 가능
             await self.send_json({"message": "🟢 STT 연결 성공"})
 
         except Exception as e:
-            await self.send_json({'error_message': f"인증 오류: {str(e)}"})
+            # handshake 중에는 메시지 보내면 안되므로 바로 close()
             await self.close()
+
 
 
     async def disconnect(self, close_code):

@@ -14,7 +14,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 PROJECT_ROOT = BASE_DIR.parent
 
 # SECURITY WARNING: don't run with debug turned on in production!
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["*", "3.34.58.51"]
 
 # Application definition
 
