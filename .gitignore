@@ -167,6 +167,7 @@ celerybeat.pid
 .env.*
 Dstonylion/.env.local
 .venv
+.env.local
 env/
 venv/
 ENV/

@@ -15,8 +15,12 @@ def get_device():
 # -------------------------------------------------------------------
 # ① 공용 경로 설정
 # -------------------------------------------------------------------
-BASE_DIR = settings.BASE_DIR
-_CONVERTER_DIR = os.path.join(BASE_DIR, "checkpoints_v2", "converter")
+MODEL_DIR = "/app/models/checkpoints_v2"
+
+BASE_SPEAKER_AUDIO = os.path.join(MODEL_DIR, "base_speakers", "base_ko.wav")
+BASE_SPEAKER_SE = os.path.join(MODEL_DIR, "base_speakers", "ses", "kr.pth")
+
+_CONVERTER_DIR = os.path.join(MODEL_DIR, "converter")
 
 
 # -------------------------------------------------------------------
@@ -26,7 +30,7 @@ _tts_cache = {}
 _tone_converter = None
 
 
-def clone_voice(source_audio_path, reference_audio_path, base_speaker_se_path, output_path):
+def clone_voice(source_audio_path, reference_audio_path, output_path):
     from openvoice import se_extractor
     import torch
 
@@ -39,6 +43,7 @@ def clone_voice(source_audio_path, reference_audio_path, base_speaker_se_path, o
     target_se, _ = se_extractor.get_se(reference_audio_path, converter, vad=True)
 
     # base speaker SE 로드
+    base_speaker_se_path = BASE_SPEAKER_SE
     source_se = torch.load(base_speaker_se_path, map_location=device)
 
     # 변환 수행

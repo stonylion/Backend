@@ -58,9 +58,15 @@ class StoryPage(models.Model):
         ordering = ['page_number']
 
 class Illustrations(models.Model):
-    story_page = models.ForeignKey(StoryPage, on_delete=models.CASCADE, related_name="illustrations")
+    story = models.ForeignKey(
+        Story, on_delete=models.CASCADE, null=True, blank=True, related_name="illustrations"
+    )
+    story_page = models.ForeignKey(
+        StoryPage, on_delete=models.CASCADE, null=True, blank=True, related_name="illustrations"
+    )
     image = models.ImageField(upload_to='illustrations/')
     prompt = models.TextField()
+    style = models.CharField(max_length=50, null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
 
     def __str__(self):

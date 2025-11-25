@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    command: gunicorn stonylion.wsgi:application -b 0.0.0.0:8000 --log-level debug --error-logfile - --capture-output
+    command: gunicorn stonylion.wsgi:application -b 0.0.0.0:8000 --workers 3 --threads 2 --timeout 600 --log-level debug --error-logfile - --capture-output
     env_file:
       - .env
     volumes:
@@ -12,7 +12,7 @@ services:
       - media:/app/media
       - /home/ubuntu/MeloTTS:/app/MeloTTS
       - /home/ubuntu/OpenVoice:/app/OpenVoice
-      - ./checkpoints_v2:/app/Dstonylion/checkpoints_v2
+      - /home/ubuntu/models:/app/models
       - outputs_v2:/app/Dstonylion/outputs_v2
     expose:
       - 8000
@@ -31,7 +31,7 @@ services:
     working_dir: /app/Dstonylion
     entrypoint:
       - sh
-      - /app/config/docker/entrypoint.prod.sh
+      - /app/config/docker/entrypoint.asgi.sh
     command: daphne -b 0.0.0.0 -p 8001 stonylion.asgi:application
     env_file:
       - .env
@@ -44,7 +44,7 @@ services:
       - media:/app/media
       - /home/ubuntu/MeloTTS:/app/MeloTTS
       - /home/ubuntu/OpenVoice:/app/OpenVoice
-      - ./checkpoints_v2:/app/Dstonylion/checkpoints_v2
+      - /home/ubuntu/models:/app/models
       - outputs_v2:/app/Dstonylion/outputs_v2
 
   nginx:
