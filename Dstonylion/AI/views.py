@@ -114,7 +114,7 @@ def run_illustration_job(job_id):
         pages = story.pages.all().order_by("page_number")
 
         safe_title = safe_filename(story.title)
-        base_dir = f"story_illustrations/{safe_title}"
+        base_dir = f"story_illustrations/{story.id}"
         illustration_context = build_illustration_context(story)
 
         # =====================
@@ -147,6 +147,9 @@ def run_illustration_job(job_id):
             prompt=cover_prompt,
             style=style
         )
+
+        story.cover = cover_s3_path
+        story.save(update_fields=["cover"])
 
         # COVER 상태 업데이트
         cover_status = job.page_status.get(page_number=0)
@@ -240,7 +243,7 @@ def run_single_page_job(job_id, page_number):
         page = StoryPage.objects.get(story=story, page_number=page_number)
 
         safe_title = safe_filename(story.title)
-        base_dir = f"story_illustrations/{safe_title}"
+        base_dir = f"story_illustrations/{story.id}"
 
         illustration_context = build_illustration_context(story)
 
@@ -429,7 +432,7 @@ class ReGenerateIllustrationView(views.APIView):
         style_text = style_map.get(style, style_map["watercolor"])
 
         safe_title = safe_filename(story.title)
-        base_dir = f"story_illustrations/{safe_title}"
+        base_dir = f"story_illustrations/{story.id}"
 
         # 5) Prompt 생성
         illustration_context = build_illustration_context(story)
@@ -468,7 +471,7 @@ class ReGenerateIllustrationView(views.APIView):
         file_obj = ContentFile(img_bytes)
 
         # 7) S3 업로드
-        s3_path = default_storage.save(filename, file_obj)
+        s3_path = default_storage.save(f"{base_dir}/{filename}", file_obj)
 
         # 8) 새로운 삽화 DB 등록
         illustration = Illustrations.objects.create(
