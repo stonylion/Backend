@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("AI", "0004_extendchat_extendmessage"),
+        ("AI", "0006_extendchat_extendmessage"),
     ]
 
     operations = [

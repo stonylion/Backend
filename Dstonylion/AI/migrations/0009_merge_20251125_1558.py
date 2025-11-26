@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("AI", "0005_illustrationjob_job_type"),
-        ("AI", "0006_extendchat_is_continuing"),
+        ("AI", "0008_extendchat_is_continuing"),
     ]
 
     operations = []

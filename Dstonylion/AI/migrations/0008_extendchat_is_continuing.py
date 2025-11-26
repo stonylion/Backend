@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("AI", "0005_extendchat_user_token_count"),
+        ("AI", "0007_extendchat_user_token_count"),
     ]
 
     operations = [
