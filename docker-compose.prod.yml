@@ -14,8 +14,8 @@ services:
       - /home/ubuntu/OpenVoice:/app/OpenVoice
       - /home/ubuntu/models:/app/models
       - outputs_v2:/app/Dstonylion/outputs_v2
-    expose:
-      - 8000
+    ports:
+      - "8000:8000"
     working_dir: /app/Dstonylion
     entrypoint:
       - sh
