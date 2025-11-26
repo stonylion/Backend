@@ -34,6 +34,7 @@ class Story(models.Model):
     content = models.TextField()
 
     illustration_style = models.CharField(max_length=50, choices=STYLE_CHOICES, null=True, blank=True)
+    illustration_context = models.TextField(null=True, blank=True)
     page_count = models.IntegerField(default=0)
     runtime = models.CharField(max_length=50, null=True, blank=True)
     age_group = models.CharField(max_length=50, null=True, blank=True)
