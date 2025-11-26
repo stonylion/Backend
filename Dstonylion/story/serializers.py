@@ -21,7 +21,7 @@ class StoryScriptSerializer(serializers.ModelSerializer):
 class StorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Story
-        fields = ["id", "title", "author", "content", "category",
+        fields = ["id", "title", "author", "cover", "content", "category",
             "runtime", "age_group", "morals", "created_at", "updated_at"]
 
 class StoryInfoSerializer(serializers.ModelSerializer):
