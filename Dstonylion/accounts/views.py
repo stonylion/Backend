@@ -758,6 +758,7 @@ class ChildrenListView(APIView):
             result.append({
                 "child_id": child.id,
                 "name": child.name,
+                "image":child.child_image_code,
                 "is_active": child.is_active
             })
 
