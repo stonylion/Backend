@@ -3,6 +3,8 @@ from .views import *
 
 urlpatterns = [
     path("illustration/generate/", GenerateIllustrationsView.as_view()),
+    path("illustration/job/<int:job_id>/", IllustrationJobStatusView.as_view()),
+    path("illustration/regenerate/", ReGenerateIllustrationView.as_view()),
     path("illustration/download/<int:story_id>/<int:page_id>/", IllustrationDownloadView.as_view()),
     
     path("stories/<int:story_id>/extend-chat/stream/", ExtendChatStreamView.as_view()),

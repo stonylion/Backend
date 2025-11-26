@@ -5,7 +5,8 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(os.path.join(BASE_DIR.parent, ".env"))
+#load_dotenv(os.path.join(BASE_DIR.parent, ".env"))
+load_dotenv(BASE_DIR / ".env.local")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
@@ -14,7 +15,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 PROJECT_ROOT = BASE_DIR.parent
 
 # SECURITY WARNING: don't run with debug turned on in production!
-ALLOWED_HOSTS = ["*", "3.34.58.51"]
+ALLOWED_HOSTS = ["*"]
 
 # Application definition
 
@@ -110,7 +111,7 @@ CHANNEL_LAYERS = {
             "hosts": [{
                 "host": REDIS_HOST,
                 "port": REDIS_PORT,
-                "ssl": True,     
+                "ssl": False,     
             }],
         },
     },
@@ -119,10 +120,10 @@ CHANNEL_LAYERS = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"rediss://{REDIS_HOST}:{REDIS_PORT}/0",   # 🔥 rediss
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/0",   # 🔥 rediss
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SSL": True,     # 🔥 필수
+            "SSL": False,     # 🔥 필수
         }
     }
 }
@@ -180,7 +181,7 @@ LOGGING = {
         },
         "django": {
             "handlers": ["console"],
-            "level": "DEBUG",   # 필요하면 INFO로 변경
+            "level": "ERROR",   # 필요하면 INFO로 변경
             "propagate": True,
         },
     },
