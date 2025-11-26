@@ -13,6 +13,10 @@ class IllustrationJob(models.Model):
         ("crayon", "크레파스"),
         ("3d", "3D 애니메이션")
     ]
+    JOB_TYPE_CHOICES = [
+        ("full", "전체 생성"),
+        ("regen", "페이지 재생성"),
+    ]
     
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="ai_jobs")
     style = models.CharField(max_length=50, choices=STYLE_CHOICES, null=True, blank=True)
@@ -23,9 +27,29 @@ class IllustrationJob(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    job_type = models.CharField(max_length=10, choices=JOB_TYPE_CHOICES, default="full")
 
     def __str__(self):
         return f"Illustrations for {self.story.title} ({self.status})"
+
+class IllustrationJobPage(models.Model):
+    job = models.ForeignKey(IllustrationJob, on_delete=models.CASCADE, related_name="page_status")
+    page_number = models.IntegerField()   # cover=0
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("PENDING", "Pending"),
+            ("RUNNING", "Running"),
+            ("SUCCESS", "Success"),
+            ("FAILED", "Failed"),
+        ],
+        default="PENDING"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["page_number"]
+
 
 class ChatRoom(models.Model):
     story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="chatrooms")
