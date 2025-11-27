@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import timedelta
 from django.utils import timezone
 
-from story.models import Message, ExtendMessage
+from AI.models import Message, ExtendMessage
 
 
 KOREAN_STOPWORDS = {
