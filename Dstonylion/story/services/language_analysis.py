@@ -1,4 +1,3 @@
-# story/services/language_analysis.py
 import math
 from collections import Counter
 from datetime import timedelta
@@ -7,6 +6,9 @@ from django.utils import timezone
 from AI.models import Message, ExtendMessage
 
 
+# -----------------------------------------------------
+# STOPWORDS
+# -----------------------------------------------------
 KOREAN_STOPWORDS = {
     '이', '가', '을', '를', '은', '는', '도', '만', '에게', '한테', '와', '과', '랑',
     '처럼', '에서', '으로', '로', '하고', '있어요', '했어요', '이에요', '예요',
@@ -15,18 +17,35 @@ KOREAN_STOPWORDS = {
 }
 
 
+# -----------------------------------------------------
+# LEVEL DEFINITION
+# -----------------------------------------------------
 NDW_LEVELS = [
-    (65, "다채로운 스토리텔러",
-     "또래의 어휘 활용 경향을 뛰어넘는 폭넓은 표현력을 보입니다. 다양한 단어를 자유롭게 사용해요."),
-    (55, "노력하는 이야기꾼",
-     "이야기 주제에 맞는 내용어를 안정적으로 사용하며, 또래와 유사한 수준입니다."),
-    (0, "초보 이야기 정원사",
-     "주요 단어 반복이 잦으며, 친숙한 어휘를 기반으로 표현하고 있어요."),
+    {
+        "level": 3,
+        "threshold": 65,
+        "title": "다채로운 스토리텔러",
+        "description": "또래의 어휘 활용 경향을 뛰어넘는 폭넓은 표현력을 보입니다. 다양한 단어를 자유롭게 사용해요."
+    },
+    {
+        "level": 2,
+        "threshold": 55,
+        "title": "노력하는 이야기꾼",
+        "description": "이야기 주제에 맞는 내용어를 안정적으로 사용하며, 또래와 유사한 수준입니다."
+    },
+    {
+        "level": 1,
+        "threshold": 0,
+        "title": "초보 이야기 정원사",
+        "description": "주요 단어 반복이 잦으며, 친숙한 어휘를 기반으로 표현하고 있어요."
+    },
 ]
 
 
+# -----------------------------------------------------
+# TOKENIZE
+# -----------------------------------------------------
 def tokenize_and_filter(text):
-    """토큰화 + 기능어 필터링."""
     raw_tokens = [w.strip() for w in text.split() if w.strip()]
     filtered = []
 
@@ -34,7 +53,7 @@ def tokenize_and_filter(text):
         if t in KOREAN_STOPWORDS:
             continue
 
-        # 어미/조사 제거
+        # 조사/어미 제거
         token = (
             t.removesuffix("가요").removesuffix("이요")
              .removesuffix("어요").removesuffix("에요")
@@ -48,22 +67,62 @@ def tokenize_and_filter(text):
     return filtered
 
 
-def calculate_ndw_for_month(user, days=30):
-    """
-    최근 days일 동안 user 메시지를 모두 모아 NDW 계산.
-    """
+# -----------------------------------------------------
+# GET LEVEL — MONTHLY
+# -----------------------------------------------------
+def get_level_info_monthly(avg_ndw):
+    month_adjust = 0.95  # 월간은 조금 더 완화
 
+    for lvl in NDW_LEVELS:
+        if avg_ndw >= math.ceil(lvl["threshold"] * month_adjust):
+            return {
+                "title": lvl["title"],
+                "level_number": f"Level {lvl['level']}",
+                "description": lvl["description"]
+            }
+
+    # 안전장치
+    return {
+        "title": NDW_LEVELS[-1]["title"],
+        "level_number": f"Level {NDW_LEVELS[-1]['level']}",
+        "description": NDW_LEVELS[-1]["description"]
+    }
+
+
+# -----------------------------------------------------
+# GET LEVEL — STORY
+# -----------------------------------------------------
+def get_level_info_story(ndw_score):
+    for lvl in NDW_LEVELS:
+        if ndw_score >= lvl["threshold"]:
+            return {
+                "title": lvl["title"],
+                "level_number": f"Level {lvl['level']}",
+                "description": lvl["description"]
+            }
+
+    return {
+        "title": NDW_LEVELS[-1]["title"],
+        "level_number": f"Level {NDW_LEVELS[-1]['level']}",
+        "description": NDW_LEVELS[-1]["description"]
+    }
+
+
+# -----------------------------------------------------
+# MONTHLY NDW
+# -----------------------------------------------------
+def calculate_ndw_for_month(user, days=30):
     now = timezone.now()
     start_date = now - timedelta(days=days)
 
-    # Message(sender="user")
+    # 기본 메시지
     base_msgs = Message.objects.filter(
         sender="user",
         timestamp__gte=start_date,
         story__user=user
     ).values_list("text", flat=True)
 
-    # ExtendMessage(role="user")
+    # 확장 메시지
     extend_msgs = ExtendMessage.objects.filter(
         role="user",
         created_at__gte=start_date,
@@ -76,26 +135,14 @@ def calculate_ndw_for_month(user, days=30):
         return None
 
     full_text = " ".join(utterances)
-
     tokens = tokenize_and_filter(full_text)
+
     token_count = len(tokens)
     ndw_score = len(set(tokens))
-
     token_freq = Counter(tokens)
 
-    avg_tokens = token_count  # 월 전체 기준 → “평균”은 세션 수 없으니 그대로 반환
-    avg_ndw = ndw_score
-
-    # 레벨 적용
-    month_adjust = 0.95
-    for threshold, title, desc in NDW_LEVELS:
-        if avg_ndw >= math.ceil(threshold * month_adjust):
-            level_info = {
-                "title": title,
-                "level_number": f"Level {NDW_LEVELS.index((threshold, title, desc)) + 1}",
-                "description": desc
-            }
-            break
+    # 레벨 계산
+    level_info = get_level_info_monthly(ndw_score)
 
     return {
         "period": {
@@ -106,24 +153,23 @@ def calculate_ndw_for_month(user, days=30):
         },
         "stats": {
             "avg_total_tokens": token_count,
-            "avg_ndw": avg_ndw,
+            "avg_ndw": ndw_score,
         },
         "top_words": token_freq.most_common(5),
         "level": level_info
     }
 
+
+# -----------------------------------------------------
+# STORY NDW
+# -----------------------------------------------------
 def calculate_ndw_for_story(user, story_id):
-    """
-    특정 동화(story_id)에 대한 내용어 기반 NDW 분석.
-    """
-    # 1) Message(sender=user)
     base_msgs = Message.objects.filter(
         sender="user",
         story_id=story_id,
         story__user=user
     ).values_list("text", flat=True)
 
-    # 2) ExtendMessage(role=user, chat__story_id=story_id)
     extend_msgs = ExtendMessage.objects.filter(
         role="user",
         chat__story_id=story_id,
@@ -135,23 +181,14 @@ def calculate_ndw_for_story(user, story_id):
     if not utterances:
         return None
 
-    # 전체 텍스트 합치기
     full_text = " ".join(utterances)
-
     tokens = tokenize_and_filter(full_text)
+
     token_count = len(tokens)
     ndw_score = len(set(tokens))
     token_freq = Counter(tokens)
 
-    # 레벨 분류 → session 기준 (monthly와 약간 다르게 조정 없이)
-    for threshold, title, desc in NDW_LEVELS:
-        if ndw_score >= threshold:
-            level_info = {
-                "title": title,
-                "level_number": f"Level {NDW_LEVELS.index((threshold, title, desc)) + 1}",
-                "description": desc
-            }
-            break
+    level_info = get_level_info_story(ndw_score)
 
     return {
         "stats": {
