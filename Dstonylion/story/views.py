@@ -831,3 +831,37 @@ class MonthlyNDWReportView(APIView):
         }
 
         return Response(response, status=200)
+    
+class StoryNDWReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, story_id):
+        from story.services.language_analysis import calculate_ndw_for_story
+
+        # story 존재 여부 + 권한
+        story = Story.objects.filter(id=story_id, user=request.user).first()
+        if not story:
+            return Response({"error": "해당 스토리를 찾을 수 없거나 권한이 없습니다."}, status=404)
+
+        result = calculate_ndw_for_story(request.user, story_id)
+
+        if result is None:
+            return Response({"error": "해당 동화에 대한 user 발화 기록이 없습니다."}, status=404)
+
+        # Response 포맷을 너가 원하는 리포트 형식 그대로 맞춤
+        response = {
+            "story": {
+                "story_id": story.id,
+                "title": story.title,
+                "date": story.created_at.date().isoformat()
+            },
+            "level": result["level"],
+            "statistics": result["stats"],
+            "top_words": [
+                {"word": w, "count": c}
+                for w, c in result["top_words"]
+            ],
+            "total_user_utterances": result["utterance_count"]
+        }
+
+        return Response(response, status=200)

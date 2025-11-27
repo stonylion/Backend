@@ -111,3 +111,54 @@ def calculate_ndw_for_month(user, days=30):
         "top_words": token_freq.most_common(5),
         "level": level_info
     }
+
+def calculate_ndw_for_story(user, story_id):
+    """
+    특정 동화(story_id)에 대한 내용어 기반 NDW 분석.
+    """
+    # 1) Message(sender=user)
+    base_msgs = Message.objects.filter(
+        sender="user",
+        story_id=story_id,
+        story__user=user
+    ).values_list("text", flat=True)
+
+    # 2) ExtendMessage(role=user, chat__story_id=story_id)
+    extend_msgs = ExtendMessage.objects.filter(
+        role="user",
+        chat__story_id=story_id,
+        chat__user=user
+    ).values_list("content", flat=True)
+
+    utterances = list(base_msgs) + list(extend_msgs)
+
+    if not utterances:
+        return None
+
+    # 전체 텍스트 합치기
+    full_text = " ".join(utterances)
+
+    tokens = tokenize_and_filter(full_text)
+    token_count = len(tokens)
+    ndw_score = len(set(tokens))
+    token_freq = Counter(tokens)
+
+    # 레벨 분류 → session 기준 (monthly와 약간 다르게 조정 없이)
+    for threshold, title, desc in NDW_LEVELS:
+        if ndw_score >= threshold:
+            level_info = {
+                "title": title,
+                "level_number": f"Level {NDW_LEVELS.index((threshold, title, desc)) + 1}",
+                "description": desc
+            }
+            break
+
+    return {
+        "stats": {
+            "total_tokens": token_count,
+            "ndw": ndw_score,
+        },
+        "top_words": token_freq.most_common(5),
+        "level": level_info,
+        "utterance_count": len(utterances)
+    }
