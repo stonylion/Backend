@@ -19,6 +19,8 @@ from story.utils import split_into_pages
 from dotenv import load_dotenv
 from django.utils.text import slugify
 
+from story.services.language_analysis import calculate_ndw_for_month
+
 load_dotenv(settings.BASE_DIR/ ".env")
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -803,3 +805,29 @@ class ClassicStoryUploadView(APIView):
             "page_count": story.page_count
         }, status=201)
 
+class MonthlyNDWReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        days = int(request.query_params.get("days", 30))
+
+        result = calculate_ndw_for_month(request.user, days)
+
+        if result is None:
+            return Response(
+                {"error": f"최근 {days}일 동안 user 발화가 존재하지 않습니다."},
+                status=404
+            )
+
+        # Response 포맷 → 너가 원하는 JSON 형태와 1:1 일치하도록 구성
+        response = {
+            "period": result["period"],
+            "level": result["level"],
+            "monthly_statistics": result["stats"],
+            "top_words": [
+                {"word": w, "count": c}
+                for w, c in result["top_words"]
+            ]
+        }
+
+        return Response(response, status=200)
