@@ -21,6 +21,11 @@ from django.utils.text import slugify
 
 from story.services.language_analysis import calculate_ndw_for_month
 
+from story.services.personality_engine import (
+    predict_personality_with_adjustment,
+)
+from story.services.personality_report import generate_personality_report
+
 load_dotenv(settings.BASE_DIR/ ".env")
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -865,3 +870,46 @@ class StoryNDWReportView(APIView):
         }
 
         return Response(response, status=200)
+
+class PersonalityReportGlobalView(APIView):
+    """
+    최근 30일 user 발화 기반 성격 분석 (NEO Big5)
+    story_id 없음
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # body의 utterances (추가 발화) - optional
+        extra = request.data.get("utterances", [])
+
+        # 최근 30일 모든 발화 수집
+        from AI.models import Message, ExtendMessage
+        from datetime import timedelta
+        from django.utils import timezone
+
+        since = timezone.now() - timedelta(days=30)
+
+        msg1 = Message.objects.filter(
+            sender="user",
+            timestamp__gte=since,
+            story__user=request.user
+        ).values_list("text", flat=True)
+
+        msg2 = ExtendMessage.objects.filter(
+            role="user",
+            created_at__gte=since,
+            chat__user=request.user
+        ).values_list("content", flat=True)
+
+        all_utterances = list(msg1) + list(msg2) + extra
+
+        # NEO 성격 분석
+        result, rationale = predict_personality_with_adjustment(all_utterances)
+
+        report = generate_personality_report(result, rationale)
+
+        return Response({
+            "result": result,
+            "rationale": rationale,
+            "report": report
+        })

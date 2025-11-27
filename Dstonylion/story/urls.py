@@ -21,4 +21,5 @@ urlpatterns = [
     path('<int:story_id>/script/', StoryScriptView.as_view()),
     path("language/report/monthly/", MonthlyNDWReportView.as_view()),
     path("language/report/story/<int:story_id>/",StoryNDWReportView.as_view()),
+    path("personality/analyze/", PersonalityReportGlobalView.as_view()),
 ]
