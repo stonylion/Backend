@@ -36,3 +36,15 @@ class MoralThemeSerializer(serializers.ModelSerializer):
     class Meta:
         model = MoralTheme
         fields = ["id", "key", "name"]
+
+class StoryReactionListSerializer(StoryInfoSerializer):
+    liked_at = serializers.DateTimeField(required=False)
+    disliked_at = serializers.DateTimeField(required=False)
+
+    class Meta(StoryInfoSerializer.Meta):
+        fields = StoryInfoSerializer.Meta.fields + ["liked_at", "disliked_at"]
+
+class StoryReactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoryReaction
+        fields = ["story", "child", "reaction", "created_at"]

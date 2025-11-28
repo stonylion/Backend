@@ -99,3 +99,17 @@ class StoryExtension(models.Model):
 
     def __str__(self):
         return f"{self.child.name}의 {self.story.title}"
+
+class StoryReaction(models.Model):
+    REACTION_CHOICES = [
+        ("like", "좋아요"),
+        ("dislike", "아쉬워요"),
+    ]
+
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="reactions")
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name="reactions")
+    reaction = models.CharField(max_length=10, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("story", "child")  # 같은 스토리에 중복 반응 방지

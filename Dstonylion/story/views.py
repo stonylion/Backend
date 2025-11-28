@@ -517,7 +517,7 @@ class StoryResetView(APIView):
             "message": "스토리 생성 흐름 데이터가 초기화되었습니다."
         }, status=200)
     
-    
+
 class ClonedVoiceTTSView(APIView):
     """
     사용자가 지정한 클로닝된 voice_id의 SE 벡터로
@@ -1019,3 +1019,129 @@ class PersonalityReportGlobalView(APIView):
             "rationale": rationale,
             "report": report
         })
+    
+
+
+# ------------------------------------------------------
+# 1) 반응 저장 API (좋아요/아쉬워요)
+# POST /api/stories/{story_id}/reaction/
+# ------------------------------------------------------
+class StoryReactionCreateView(APIView):
+    """
+    StoryReaction 저장/업데이트
+    story + child 기준 하나만 존재하도록 update_or_create 사용
+    """
+
+    def post(self, request, story_id):
+        child_id = request.data.get("child_id")
+        reaction = request.data.get("reaction")
+
+        if not child_id:
+            return Response({"error": "child_id is required."}, status=400)
+
+        if reaction not in ["like", "dislike"]:
+            return Response({"error": "reaction must be 'like' or 'dislike'."}, status=400)
+
+        story = get_object_or_404(Story, id=story_id)
+        child = get_object_or_404(Child, id=child_id)
+
+        reaction_obj, created = StoryReaction.objects.update_or_create(
+            story=story,
+            child=child,
+            defaults={"reaction": reaction},
+        )
+
+        serializer = StoryReactionSerializer(reaction_obj)
+
+        return Response(
+            {
+                "message": "반응이 저장되었습니다.",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+
+# ------------------------------------------------------
+# 2) 좋아요 스토리 목록
+# GET /api/stories/reactions/like/?child_id=3
+# ------------------------------------------------------
+class StoryLikeListView(APIView):
+    """
+    특정 child가 '좋아요'한 스토리 목록 반환
+    """
+
+    def get(self, request):
+        child_id = request.GET.get("child_id")
+
+        if not child_id:
+            return Response({"error": "child_id is required."}, status=400)
+
+        child = get_object_or_404(Child, id=child_id)
+
+        reactions = StoryReaction.objects.filter(
+            child=child,
+            reaction="like"
+        ).select_related("story").order_by("-created_at")
+
+        # Story 객체에 reaction timestamp를 주입
+        story_list = []
+        for r in reactions:
+            story = r.story
+            story.liked_at = r.created_at
+            story.disliked_at = None
+            story_list.append(story)
+
+        serializer = StoryReactionListSerializer(story_list, many=True)
+
+        return Response(
+            {
+                "child_id": child.id,
+                "reaction": "like",
+                "count": len(story_list),
+                "results": serializer.data,
+            }
+        )
+
+
+
+# ------------------------------------------------------
+# 3) 아쉬워요 스토리 목록
+# GET /api/stories/reactions/dislike/?child_id=3
+# ------------------------------------------------------
+class StoryDislikeListView(APIView):
+    """
+    특정 child가 '아쉬워요'한 스토리 목록 반환
+    """
+
+    def get(self, request):
+        child_id = request.GET.get("child_id")
+
+        if not child_id:
+            return Response({"error": "child_id is required."}, status=400)
+
+        child = get_object_or_404(Child, id=child_id)
+
+        reactions = StoryReaction.objects.filter(
+            child=child,
+            reaction="dislike"
+        ).select_related("story").order_by("-created_at")
+
+        story_list = []
+        for r in reactions:
+            story = r.story
+            story.disliked_at = r.created_at
+            story.liked_at = None
+            story_list.append(story)
+
+        serializer = StoryReactionListSerializer(story_list, many=True)
+
+        return Response(
+            {
+                "child_id": child.id,
+                "reaction": "dislike",
+                "count": len(story_list),
+                "results": serializer.data,
+            }
+        )
