@@ -3,7 +3,8 @@ from .views import *
 
 urlpatterns = [
     path('options/', StoryOptionSaveView.as_view()),
-    path("draft/", StoryDraftUpdateView.as_view()), 
+    path("draft/", StoryDraftUpdateView.as_view()),
+    path('draft_stt/', StoryDraftAudioAppendView.as_view()),
     path('morals/', MoralThemeListView.as_view()),
     path('story-morals/', StoryMoralSaveView.as_view()),
     path('story-morals/recommend/', RecommendMoralView.as_view()),

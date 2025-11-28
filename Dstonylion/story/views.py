@@ -1,11 +1,14 @@
-import redis, random, os, json, re
+import redis, random, os, json, re, tempfile
 import openai
+from openai import OpenAI
+from pathlib import Path
 from django.conf import settings
 from django.core.files import File
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from .models import *
 from .serializers import *
@@ -28,6 +31,8 @@ from story.services.personality_report import generate_personality_report
 
 load_dotenv(settings.BASE_DIR/ ".env")
 # openai.api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 User = get_user_model()
 
@@ -57,12 +62,81 @@ class StoryOptionSaveView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=True, 
+            ssl=False, 
         )
         redis_client.hset(f"story_option:{request.user.id}", mapping={"runtime": runtime, "age_group": age_group})
 
         return Response({"next": "/story/record/"}, status=status.HTTP_200_OK)
-    
+
+def append_draft(user_id, new_text):
+    redis_client = redis.StrictRedis(
+        host=getattr(settings, "REDIS_HOST", "localhost"),
+        port=getattr(settings, "REDIS_PORT", 6379),
+        db=0,
+        decode_responses=True,
+        ssl=False,
+    )
+
+    key = f"story_draft:{user_id}"
+    existing = redis_client.get(key) or ""
+
+    # 기존 draft 뒤에 자연스럽게 이어 붙이기
+    if existing:
+        updated = existing.rstrip() + " " + new_text.strip()
+    else:
+        updated = new_text.strip()
+
+    redis_client.set(key, updated)
+    return updated
+
+class StoryDraftAudioAppendView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        audio = request.FILES.get("audio")
+        if not audio:
+            return Response({"error": "audio 파일이 필요합니다."}, status=400)
+
+        # 1) 파일 임시 저장
+        suffix = Path(audio.name).suffix or ".mp3"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            for chunk in audio.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        # 2) Whisper-1 호출
+        try:
+            with open(tmp_path, "rb") as f:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f
+                )
+                text = transcript.text.strip()
+        except Exception as e:
+            return Response({"error": f"STT 실패: {str(e)}"}, status=500)
+
+        # 3) Redis draft에 append
+        redis_client = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
+        )
+
+        key = f"story_draft:{request.user.id}"
+        existing = redis_client.get(key) or ""
+
+        updated = (existing + " " + text).strip()
+
+        redis_client.set(key, updated)
+
+        return Response({
+            "message": "음성이 변환되어 draft에 추가되었습니다.",
+            "recognized_text": text,
+            "draft": updated
+        }, status=200)
+
 class StoryDraftUpdateView(APIView):
     """
     사용자가 텍스트 입력으로 최종 입력한 내용을 Redis에 저장하는 API
@@ -70,7 +144,7 @@ class StoryDraftUpdateView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    '''def post(self, request):
         text = request.data.get("text")
 
         if not text:
@@ -85,7 +159,7 @@ class StoryDraftUpdateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=True, 
+            ssl=False, 
         )
 
         redis_key = f"story_draft:{request.user.id}"
@@ -96,7 +170,27 @@ class StoryDraftUpdateView(APIView):
         return Response(
             {"message": "draft 업데이트 완료되었습니다."},
             status=200
+        )'''
+    
+    def put(self, request):
+        text = request.data.get("text", "").strip()
+
+        if text is None:
+            return Response({"error": "text는 필수 항목입니다."}, status=400)
+
+        redis_client = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
         )
+
+        redis_client.set(f"story_draft:{request.user.id}", text)
+
+        return Response({
+            "message": "Draft 전체가 저장되었습니다.",
+            "draft": text
+        }, status=200)
 
 
 DEFAULT_MORALS = [
@@ -239,7 +333,7 @@ class StoryMoralSaveView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=True, 
+            ssl=False, 
         )
         user_id = request.user.id
         redis_key = f"story_morals:{user_id}"
@@ -282,7 +376,7 @@ class StoryGenerateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=True, 
+            ssl=False, 
         )
 
         user_id = request.user.id
@@ -393,7 +487,7 @@ class StoryResetView(APIView):
                 port=getattr(settings, "REDIS_PORT", 6379),
                 db=0,
                 decode_responses=True,
-                ssl=True, 
+                ssl=False, 
             )
 
             keys = [
@@ -836,7 +930,7 @@ class MonthlyNDWReportView(APIView):
         }
 
         return Response(response, status=200)
-    
+
 class StoryNDWReportView(APIView):
     permission_classes = [IsAuthenticated]
 
