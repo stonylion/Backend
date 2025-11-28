@@ -8,7 +8,7 @@ services:
     env_file:
       - .env
     volumes:
-      - static:/app/staticfiles
+      - static:/app/Dstonylion/staticfiles
       - media:/app/media
       - /home/ubuntu/MeloTTS:/app/MeloTTS
       - /home/ubuntu/OpenVoice:/app/OpenVoice
@@ -40,7 +40,7 @@ services:
     depends_on:
       - web
     volumes:
-      - static:/app/staticfiles
+      - static:/app/Dstonylion/staticfiles
       - media:/app/media
       - /home/ubuntu/MeloTTS:/app/MeloTTS
       - /home/ubuntu/OpenVoice:/app/OpenVoice
@@ -57,7 +57,7 @@ services:
       - web
       - asgi
     volumes:
-      - static:/app/staticfiles
+      - static:/app/Dstonylion/staticfiles
       - media:/app/media
 
 volumes:
