@@ -46,7 +46,7 @@ zziminally
 | STT 음성 입력        | 	zziminally  | 음성 → 텍스트 변환, Whisper 기반 전처리 및 추론 파이프라인 구성 |    Whisper           |
 | 아이 분석 리포트        | 2ewyeonwoo3  | 아동 언어발화 기반 NDW·언어지표 계산, 성격 분석 모델 적용     | NLP 분석, OpenAI API, Redis        |
 | 확장 동화 생성 및 채팅 | 	zziminally| 챗봇-아동 대화 기반 이어쓰기 스크립트 생성, Dramatica 구조 적용 | OpenAI API, Narrative Engine Logic, Chat Pipeline |
-| 배포 (AWS S3)        | zziminally  | 정적 파일·이미지 저장 버킷 구성, S3 업로드/권한 관리            | AWS S3, boto3                |
+| 이미지 스토리지 관리 (AWS S3)        | zziminally  | 정적 파일·이미지 저장 버킷 구성, S3 업로드/권한 관리            | AWS S3, boto3                |
 | 배포 (AWS EC2, Redis, RDS)|2ewyeonwoo3 | 백엔드 서버 EC2 배포, RDS(MySQL) 구성, Redis 캐시 |AWS EC2, RDS(MySQL), Redis, Nginx, Gunicorn, Docker |
 
 
