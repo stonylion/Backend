@@ -18,7 +18,7 @@ from django.core.files.storage import default_storage
 from rest_framework import viewsets, status
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from story.utils import split_into_pages
+from story.utils import *
 from dotenv import load_dotenv
 from django.utils.text import slugify
 
@@ -458,6 +458,11 @@ class StoryGenerateView(APIView):
         - 아래 초안을 참고하되, 내용은 부드럽게 재창작
         - 초안을 그대로 복붙하지 말고 흐름을 자연스럽게 구성
         - 마무리를 동화스럽게 교훈 키워드를 잘 활용
+        
+        [문장 길이 규칙 - 강제]
+        - **한 문장은 공백 포함 35자 이상 70자 이하로 작성**
+        - 문장은 마침표/물음표/느낌표로 자연스럽게 끝나는 구조로 작성
+        
         [사용자 초안]
         {draft}
         """
@@ -808,6 +813,14 @@ class StoryDetailView(APIView):
         serializer = StorySerializer(story)
         return Response(serializer.data, status=200)
     
+    def delete(self, request, story_id):
+        story = Story.objects.filter(id=story_id).first()
+        if not story:
+            return Response({"detail": "Story not found"}, status=404)
+
+        story.delete()
+        return Response({"detail": "Story deleted successfully"})
+    
 class StoryPageListView(APIView):
     def get(self, request, story_id):
         story = Story.objects.filter(id=story_id).first()
@@ -878,6 +891,7 @@ class StoryJsonImportView(APIView):
         return Response({"story_id": story.id, "title": story.title}, status=201)
 
 import chardet  
+from django.core.files.base import ContentFile
 class ClassicStoryUploadView(APIView):
 
     def post(self, request):
@@ -924,17 +938,51 @@ class ClassicStoryUploadView(APIView):
             created_at=timezone.now(),
         )
 
-        pages = split_into_pages(raw_text)
+        pages = split_into_pages_classic(raw_text)
 
+        story_pages = []
         for i, page_text in enumerate(pages, start=1):
-            StoryPage.objects.create(
+            sp = StoryPage.objects.create(
                 story=story,
                 page_number=i,
                 text=page_text
             )
+            story_pages.append(sp)
 
         story.page_count = len(pages)
         story.save()
+
+        #삽화 png 연결
+        base_name = filename.replace(".txt", "")
+        illustration_dir = f"story_illustrations/{base_name}/"
+
+        try:
+            all_files = default_storage.listdir(illustration_dir)[1]  # files only
+        except FileNotFoundError:
+            all_files = []
+
+        #표지 이미지 처리
+        cover_name = f"{base_name}_cover.png"
+        cover_path = illustration_dir + cover_name
+
+        if cover_name in all_files and default_storage.exists(cover_path):
+            with default_storage.open(cover_path, "rb") as f:
+                story.cover.save(cover_name, ContentFile(f.read()))
+            story.save()
+
+        #삽화 이미지 처리
+        for sp in story_pages:
+            page_png = f"{base_name}_p{sp.page_number}.png"
+            png_path = illustration_dir + page_png
+
+            if page_png in all_files and default_storage.exists(png_path):
+                with default_storage.open(png_path, "rb") as f:
+                    img_bytes = f.read()
+
+                Illustrations.objects.create(
+                    story_page=sp,
+                    image=ContentFile(img_bytes, name=page_png)
+                )
 
         return Response({
             "story_id": story.id,
