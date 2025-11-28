@@ -2,6 +2,7 @@ from django.shortcuts import render
 import os, json, base64, re, random, uuid, tempfile
 from uuid import uuid4
 from pathlib import Path
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
@@ -514,7 +515,8 @@ class IllustrationDownloadView(views.APIView):
             return Response({"error": "해당 페이지의 삽화가 없습니다."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        s3_key = illustration.image.name  # 실제 S3 내부 경로
+        file_url = illustration.image.url
+        s3_key = s3_key = urlparse(file_url).path.lstrip('/')
         bucket = settings.AWS_STORAGE_BUCKET_NAME
         region = settings.AWS_S3_REGION_NAME
 
@@ -526,22 +528,26 @@ class IllustrationDownloadView(views.APIView):
             region_name=region
         )
 
+        filename = f"story_{story_id}_page_{page_id}.png"
+
         try:
             presigned_url = s3_client.generate_presigned_url(
                 ClientMethod='get_object',
-                Params={'Bucket': bucket, 'Key': s3_key},
+                Params={'Bucket': bucket, 'Key': s3_key, 'ResponseContentDisposition': f'attachment; filename="{filename}"'},
                 ExpiresIn=60 * 10  # 10분 유효
             )
         except Exception as e:
             return Response({"error": f"URL 생성 실패: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        print("DEBUG s3 key:", s3_key)
 
         return Response({
             "story_id": story_id,
             "page_id": page_id,
             "download_url": presigned_url
         }, status=200)
-
+    
 HARD_MIN_USER_TOKENS = 200
 FINALIZE_SUFFIX = "이제 결말을 확장해도 될까?"
 
