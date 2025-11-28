@@ -58,7 +58,7 @@ Design: Figma
 
 
 
-### Backend 기능 구현 분담
+## Backend 기능 구현 분담
 <a href="https://github.com/2ewyeonwoo3"><img src="https://github.com/2ewyeonwoo3.png" width="40" height="40" /></a>
 2ewyeonwoo3
 <a href="https://github.com/zziminally"><img src="https://github.com/zziminally.png" width="40" height="40" /></a>
