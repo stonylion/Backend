@@ -22,6 +22,13 @@ from story.utils import split_into_pages
 from dotenv import load_dotenv
 from django.utils.text import slugify
 
+from story.services.language_analysis import calculate_ndw_for_month
+
+from story.services.personality_engine import (
+    predict_personality_with_adjustment,
+)
+from story.services.personality_report import generate_personality_report
+
 load_dotenv(settings.BASE_DIR/ ".env")
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -897,3 +904,106 @@ class ClassicStoryUploadView(APIView):
             "page_count": story.page_count
         }, status=201)
 
+class MonthlyNDWReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        days = int(request.query_params.get("days", 30))
+
+        result = calculate_ndw_for_month(request.user, days)
+
+        if result is None:
+            return Response(
+                {"error": f"최근 {days}일 동안 user 발화가 존재하지 않습니다."},
+                status=404
+            )
+
+        # Response 포맷 → 너가 원하는 JSON 형태와 1:1 일치하도록 구성
+        response = {
+            "period": result["period"],
+            "level": result["level"],
+            "monthly_statistics": result["stats"],
+            "top_words": [
+                {"word": w, "count": c}
+                for w, c in result["top_words"]
+            ]
+        }
+
+        return Response(response, status=200)
+
+class StoryNDWReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, story_id):
+        from story.services.language_analysis import calculate_ndw_for_story
+
+        # story 존재 여부 + 권한
+        story = Story.objects.filter(id=story_id, user=request.user).first()
+        if not story:
+            return Response({"error": "해당 스토리를 찾을 수 없거나 권한이 없습니다."}, status=404)
+
+        result = calculate_ndw_for_story(request.user, story_id)
+
+        if result is None:
+            return Response({"error": "해당 동화에 대한 user 발화 기록이 없습니다."}, status=404)
+
+        # Response 포맷을 너가 원하는 리포트 형식 그대로 맞춤
+        response = {
+            "story": {
+                "story_id": story.id,
+                "title": story.title,
+                "date": story.created_at.date().isoformat()
+            },
+            "level": result["level"],
+            "statistics": result["stats"],
+            "top_words": [
+                {"word": w, "count": c}
+                for w, c in result["top_words"]
+            ],
+            "total_user_utterances": result["utterance_count"]
+        }
+
+        return Response(response, status=200)
+
+class PersonalityReportGlobalView(APIView):
+    """
+    최근 30일 user 발화 기반 성격 분석 (NEO Big5)
+    story_id 없음
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # body의 utterances (추가 발화) - optional
+        extra = request.data.get("utterances", [])
+
+        # 최근 30일 모든 발화 수집
+        from AI.models import Message, ExtendMessage
+        from datetime import timedelta
+        from django.utils import timezone
+
+        since = timezone.now() - timedelta(days=30)
+
+        msg1 = Message.objects.filter(
+            sender="user",
+            timestamp__gte=since,
+            story__user=request.user
+        ).values_list("text", flat=True)
+
+        msg2 = ExtendMessage.objects.filter(
+            role="user",
+            created_at__gte=since,
+            chat__user=request.user
+        ).values_list("content", flat=True)
+
+        all_utterances = list(msg1) + list(msg2) + extra
+
+        # NEO 성격 분석
+        result, rationale = predict_personality_with_adjustment(all_utterances)
+
+        report = generate_personality_report(result, rationale)
+
+        return Response({
+            "result": result,
+            "rationale": rationale,
+            "report": report
+        })
