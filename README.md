@@ -27,7 +27,22 @@
 
 <img width="1920" height="1080" alt="14" src="https://github.com/user-attachments/assets/ce8165a6-b518-4e19-bf24-1df4cf4cd865" />
 
-### stony 기획 및 개발
+
+## 배포 URL
+
+https://frontend-puof.vercel.app/
+
+
+
+### 🛠 Tech Stack
+Frontend: React, JavaScript  
+Backend: Django  
+Infra: MySQL, AWS(EC2·S3·RDS·Redis), Nginx, Gunicorn, Docker  
+Design: Figma
+
+
+
+
 | 이름     | 역할           | 구현 파트 |
 |----------|----------------|-----------|
 | 이은서   | 기획 · 디자인  | 서비스 기획, GUI 디자인 |
@@ -38,9 +53,8 @@
 | 신지민   | 백엔드         | 동화 생성, STT 음성 입력, 확장 동화 생성 및 채팅, AWS S3 |
 
 
-### 배포 URL
 
-https://frontend-puof.vercel.app/
+
 
 
 
