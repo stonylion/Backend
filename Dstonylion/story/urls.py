@@ -3,7 +3,8 @@ from .views import *
 
 urlpatterns = [
     path('options/', StoryOptionSaveView.as_view()),
-    path("draft/", StoryDraftUpdateView.as_view()), 
+    path("draft/", StoryDraftUpdateView.as_view()),
+    path('draft_stt/', StoryDraftAudioAppendView.as_view()),
     path('morals/', MoralThemeListView.as_view()),
     path('story-morals/', StoryMoralSaveView.as_view()),
     path('story-morals/recommend/', RecommendMoralView.as_view()),
@@ -18,8 +19,5 @@ urlpatterns = [
     path('classic/upload/', ClassicStoryUploadView.as_view()),
     path('<int:story_id>/', StoryDetailView.as_view()),
     path('<int:story_id>/pages/', StoryPageListView.as_view()),
-    path('<int:story_id>/script/', StoryScriptView.as_view()),
-    path("language/report/monthly/", MonthlyNDWReportView.as_view()),
-    path("language/report/story/<int:story_id>/",StoryNDWReportView.as_view()),
-    path("personality/analyze/", PersonalityReportGlobalView.as_view()),
+    path('<int:story_id>/script/', StoryScriptView.as_view())
 ]
