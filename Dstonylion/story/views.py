@@ -63,6 +63,9 @@ class StoryOptionSaveView(APIView):
             db=0,
             decode_responses=True,
             ssl=True, 
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
         )
         redis_client.hset(f"story_option:{request.user.id}", mapping={"runtime": runtime, "age_group": age_group})
 
@@ -74,7 +77,10 @@ def append_draft(user_id, new_text):
         port=getattr(settings, "REDIS_PORT", 6379),
         db=0,
         decode_responses=True,
-        ssl=False,
+        ssl=True,
+        socket_connect_timeout=3,
+        socket_timeout=3,
+        retry_on_timeout=True,
     )
 
     key = f"story_draft:{user_id}"
@@ -122,6 +128,10 @@ class StoryDraftAudioAppendView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
+            ssl=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
         )
 
         key = f"story_draft:{request.user.id}"
@@ -183,6 +193,10 @@ class StoryDraftUpdateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
+            ssl=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
         )
 
         redis_client.set(f"story_draft:{request.user.id}", text)
@@ -198,7 +212,10 @@ class StoryDraftUpdateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=False,
+            ssl=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
         )
         draft = redis_client.get(f"story_draft:{request.user.id}") or ""
         return Response({"draft": draft}, status=200)
@@ -344,7 +361,10 @@ class StoryMoralSaveView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=False, 
+            ssl=True, 
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
         )
         user_id = request.user.id
         redis_key = f"story_morals:{user_id}"
@@ -387,7 +407,10 @@ class StoryGenerateView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=False, 
+            ssl=True, 
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
         )
 
         user_id = request.user.id
@@ -498,7 +521,10 @@ class StoryResetView(APIView):
                 port=getattr(settings, "REDIS_PORT", 6379),
                 db=0,
                 decode_responses=True,
-                ssl=False, 
+                ssl=True,
+                socket_connect_timeout=3,
+                socket_timeout=3,
+                retry_on_timeout=True,
             )
 
             keys = [
