@@ -62,7 +62,7 @@ class StoryOptionSaveView(APIView):
             port=getattr(settings, "REDIS_PORT", 6379),
             db=0,
             decode_responses=True,
-            ssl=False, 
+            ssl=True, 
         )
         redis_client.hset(f"story_option:{request.user.id}", mapping={"runtime": runtime, "age_group": age_group})
 
