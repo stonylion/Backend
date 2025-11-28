@@ -191,6 +191,17 @@ class StoryDraftUpdateView(APIView):
             "message": "Draft 전체가 저장되었습니다.",
             "draft": text
         }, status=200)
+    
+    def get(self, request):
+        redis_client = redis.StrictRedis(
+            host=getattr(settings, "REDIS_HOST", "localhost"),
+            port=getattr(settings, "REDIS_PORT", 6379),
+            db=0,
+            decode_responses=True,
+            ssl=False,
+        )
+        draft = redis_client.get(f"story_draft:{request.user.id}") or ""
+        return Response({"draft": draft}, status=200)
 
 
 DEFAULT_MORALS = [
