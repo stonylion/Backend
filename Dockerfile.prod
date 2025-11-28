@@ -51,6 +51,8 @@ RUN pip install whisper-timestamped==1.14.1
 # ===== Install base requirements =====
 RUN pip install -r requirements.txt
 
+
+
 # ===== phonemizer & pyopenjtalk 설치 =====
 RUN pip install phonemizer pyopenjtalk
 
@@ -64,13 +66,29 @@ RUN pip install librosa==0.10.0.post2 \
 RUN pip install num2words==0.5.12 dateparser==1.1.8
 RUN pip install transformers==4.39.3
 
-# ===== Install UniDic =====
-RUN pip install --no-cache-dir unidic \
-    && python3 -m unidic download \
-    && rm -rf /usr/local/lib/python3.10/site-packages/unidic/dicdir \
-    && ln -s /root/.local/share/unidic /usr/local/lib/python3.10/site-packages/unidic/dicdir
+# ===== Install MeCab Korean =====
+RUN pip install python-mecab-ko python-mecab-ko-dic
 
-RUN pip uninstall -y unidic_lite || true
+# ===== Install UniDic =====
+RUN pip install --no-cache-dir unidic unidic_lite \
+    && python3 -m unidic download 
+
+# ===== Pre-download nltk data =====
+RUN python3 - <<EOF
+import nltk
+nltk.download("punkt")
+nltk.download("averaged_perceptron_tagger")
+nltk.download("cmudict")
+EOF
+
+# ===== Pre-download HuggingFace Models =====
+RUN python3 - <<EOF
+from transformers import AutoTokenizer, AutoModel
+# 예시: OpenVoice 가 내부적으로 사용하는 kor-base BERT
+AutoTokenizer.from_pretrained("kykim/bert-kor-base")
+AutoModel.from_pretrained("kykim/bert-kor-base")
+EOF
+
 
 # ===== Install MeloTTS =====
 RUN git clone https://github.com/myshell-ai/MeloTTS.git /app/MeloTTS \
@@ -82,6 +100,5 @@ RUN git clone https://github.com/myshell-ai/OpenVoice.git /app/OpenVoice \
 
 COPY . /app
 
-WORKDIR /app/Dstonylion
 
 ENTRYPOINT ["../config/scripts/entrypoint.prod.sh"]

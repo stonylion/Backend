@@ -18,7 +18,7 @@ from story.services.openvoice_service import clone_voice
 
 from mylibrary.models import Library
 from story.models import Story, Illustrations
-from accounts.models import Child, ClonedVoice
+from accounts.models import Child, ClonedVoice, User
 from .serializers import *
 # Create your views here.
 
@@ -508,19 +508,20 @@ class VoiceCloneView(APIView):
                 voice = ClonedVoice.objects.get(id=voice_id, user=request.user)
             except ClonedVoice.DoesNotExist:
                 return Response({"error": "해당 voice_id를 찾을 수 없습니다."}, status=404)
-            
+
             reference_audio = request.FILES.get("reference_audio")
             if not reference_audio:
                 return Response({"error": "reference_audio가 필요합니다."}, status=400)
+
+            user_id = request.user.id
             
             # reference_audio → S3 업로드
             s3_ref_path = default_storage.save(
-                f"reference_audio/{voice_id}.wav", File(reference_audio)
+                f"reference_audio/user_{user_id}/voice_{voice_id}/ref_{user_id}_{voice_id}.wav",
+                File(reference_audio),
             )
-            reference_audio_url = default_storage.url(s3_ref_path)
 
-            # DB에 저장
-            voice.reference_audio_url = reference_audio_url
+            voice.reference_audio_url = default_storage.url(s3_ref_path)
             voice.save()
 
             # reference_audio 임시 파일로 저장 (OpenVoice 입력용)
@@ -532,8 +533,8 @@ class VoiceCloneView(APIView):
             # 출력 경로 준비
             output_dir = "outputs_v2"
             os.makedirs(output_dir, exist_ok=True)
-            output_path = os.path.join(output_dir, f"{request.user.id}_clone.wav")
-            se_path = os.path.join(output_dir, f"{request.user.id}_se.pth")
+            output_path = os.path.join(output_dir, f"{user_id}_{voice_id}_clone.wav")
+            se_path = os.path.join(output_dir, f"{user_id}_{voice_id}_se.pth")
 
             # 클로닝 수행 (서비스 함수 호출)
             output_path, target_se = clone_voice(
@@ -548,14 +549,15 @@ class VoiceCloneView(APIView):
             # S3 업로드
             with open(output_path, "rb") as f:
                 s3_voice_path = default_storage.save(
-                    f"tts_outputs/{request.user.id}_clone.wav", File(f)
+                    f"tts_outputs/user_{user_id}/voice_{voice_id}/{user_id}_{voice_id}_clone.wav",
+                    File(f)            # <= 반드시 있어야 함
                 )
+
             with open(se_path, "rb") as f:
                 s3_se_path = default_storage.save(
-                    f"tts_outputs/{request.user.id}_se.pth", File(f)
+                    f"tts_outputs/user_{user_id}/voice_{voice_id}/{user_id}_{voice_id}_se.pth",
+                    File(f)            # <= 여기도 필수
                 )
-            cloned_url = default_storage.url(s3_voice_path)
-            se_url = default_storage.url(s3_se_path)
 
             # 기존 Voice 객체 업데이트
             voice.cloned_voice_file = s3_voice_path
@@ -565,9 +567,9 @@ class VoiceCloneView(APIView):
             return Response({
                 "voice_id": voice.id,
                 "voice_name": voice.voice_name,
-                "reference_audio_url": reference_audio_url,
-                "cloned_voice_url": cloned_url,
-                "se_file_url": se_url
+                "reference_audio_url": voice.reference_audio_url,
+                "cloned_voice_url": default_storage.url(s3_voice_path),
+                "se_file_url": default_storage.url(s3_se_path)
             }, status=200)
 
         except Exception as e:

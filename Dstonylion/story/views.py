@@ -414,98 +414,108 @@ class StoryResetView(APIView):
 
 class ClonedVoiceTTSView(APIView):
     """
-    이미 클로닝된 사용자의 SE 벡터를 이용해
-    title + author + 각 page.text를 사용자 목소리로 TTS 합성
+    사용자가 지정한 클로닝된 voice_id의 SE 벡터를 이용한 TTS 생성 API
     """
     permission_classes = [IsAuthenticated]
-    BASE_DIR = settings.BASE_DIR
 
-    MODEL_DIR = "/app/Dstonylion/checkpoints_v2"
-
+    MODEL_DIR = "/app/models/checkpoints_v2"
     BASE_SPEAKER_AUDIO = os.path.join(MODEL_DIR, "base_speakers", "base_ko.wav")
     BASE_SPEAKER_SE    = os.path.join(MODEL_DIR, "base_speakers", "ses", "kr.pth")
 
     def post(self, request):
         from story.services.openvoice_service import (
             get_tts,
-            get_tone_converter,
-            extract_se,
             convert_voice,
         )
 
         try:
             data = request.data
+
+            # -----------------------------
+            # 1) Body 파라미터 로드
+            # -----------------------------
+            voice_id = data.get("voice_id")
             title = data.get("title")
             author = data.get("author")
             pages = data.get("pages")
 
-            # 1️⃣ 유효성 검사
+            if not voice_id:
+                return Response({"error": "voice_id가 필요합니다."}, status=400)
+
             if not title or not author or not pages:
                 return Response(
-                    {"error": "title, author, pages 필드가 모두 필요합니다."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": "voice_id, title, author, pages 필드가 모두 필요합니다."},
+                    status=400
                 )
 
-            # 2️⃣ 사용자 클로닝된 화자 정보 가져오기
-            cloned = ClonedVoice.objects.filter(user=request.user).last()
-            if not cloned or not cloned.se_file:
+            # -----------------------------
+            # 2) 클로닝된 화자 정보 조회
+            # -----------------------------
+            try:
+                cloned = ClonedVoice.objects.get(id=voice_id, user=request.user)
+            except ClonedVoice.DoesNotExist:
+                return Response({"error": "해당 voice_id를 찾을 수 없거나 권한이 없습니다."}, status=404)
+
+            user_id = request.user.id
+
+            if not cloned.se_file:
                 return Response(
-                    {"error": "먼저 /voice/clone/ API를 통해 목소리를 클로닝해주세요."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": "해당 voice_id는 SE 벡터가 없습니다. 먼저 /voice/clone/ 실행 필요."},
+                    status=400
                 )
 
-            # 3️⃣ SE 벡터 로드 (사용자 reference + base_speaker)
+            # -----------------------------
+            # 3) SE 벡터 로드
+            # -----------------------------
             import torch
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-            # 사용자 reference_se
-            with default_storage.open(cloned.se_file.name, "rb") as f:
+            se_path = cloned.se_file
+
+            with default_storage.open(se_path, "rb") as f:
                 reference_se = torch.load(f, map_location=device)
 
-            # dict 형태로 저장됐을 경우 처리
+            # dict 형태로 저장된 경우 키 추출
             if isinstance(reference_se, dict):
                 reference_se = reference_se.get("se") or reference_se.get("speaker_embed")
 
-
-            # base_speaker_se
+            # base speaker SE
             base_se = torch.load(self.BASE_SPEAKER_SE, map_location=device)
 
-            # 4️⃣ TTS 모델 로딩 (lazy-load)
+            # -----------------------------
+            # 4) TTS 모델 로드
+            # -----------------------------
             tts = get_tts("KR")
             speaker_id = list(tts.hps.data.spk2id.values())[0]
 
             os.makedirs("outputs_v2", exist_ok=True)
-
             tts_urls = []
 
-            # 5️⃣ 제목 + 작가 오디오 생성
+            # -----------------------------
+            # 5) 인트로 (title + author)
+            # -----------------------------
             intro_text = f"제목, {title}. 지은이, {author}."
 
-            base_intro_path = os.path.join("outputs_v2", f"{request.user.id}_intro_base.wav")
-            cloned_intro_path = os.path.join("outputs_v2", f"{request.user.id}_intro_clone.wav")
+            base_intro = f"outputs_v2/{user_id}_{voice_id}_intro_base.wav"
+            clone_intro = f"outputs_v2/{user_id}_{voice_id}_intro_clone.wav"
 
-            # 기본 화자 TTS
-            tts.tts_to_file(intro_text, speaker_id, base_intro_path, speed=1.0)
+            tts.tts_to_file(intro_text, speaker_id, base_intro, speed=1.0)
 
-            # 음색 변환
-            convert_voice(
-                base_intro_path,
-                reference_se,
-                cloned_intro_path,
-                base_se
+            convert_voice(base_intro, reference_se, clone_intro, base_se)
+
+            # S3 저장
+            s3_intro_path = default_storage.save(
+                f"tts_outputs/user_{user_id}/voice_{voice_id}/{user_id}_{voice_id}_intro.wav",
+                File(open(clone_intro, "rb"))
             )
+            tts_urls.append(default_storage.url(s3_intro_path))
 
-            with open(cloned_intro_path, "rb") as f:
-                s3_path = default_storage.save(
-                    f"tts_outputs/{request.user.id}_intro_clone.wav", File(f)
-                )
-                tts_urls.append(default_storage.url(s3_path))
+            os.remove(base_intro)
+            os.remove(clone_intro)
 
-            # 메모리 정리
-            os.remove(cloned_intro_path)
-            os.remove(base_intro_path)
-
-            # 6️⃣ 페이지 오디오 생성
+            # -----------------------------
+            # 6) 페이지별 TTS 생성
+            # -----------------------------
             for page in pages:
                 page_text = page.get("text")
                 page_num = page.get("page")
@@ -513,32 +523,24 @@ class ClonedVoiceTTSView(APIView):
                 if not page_text:
                     continue
 
-                base_path = os.path.join("outputs_v2", f"{request.user.id}_page_{page_num}_base.wav")
-                clone_path = os.path.join("outputs_v2", f"{request.user.id}_page_{page_num}_clone.wav")
+                base_path  = f"outputs_v2/{user_id}_{voice_id}_page_{page_num}_base.wav"
+                clone_path = f"outputs_v2/{user_id}_{voice_id}_page_{page_num}_clone.wav"
 
-                # 기본 화자로 TTS 생성
                 tts.tts_to_file(page_text, speaker_id, base_path, speed=1.0)
+                convert_voice(base_path, reference_se, clone_path, base_se)
 
-                # 음색 변환
-                convert_voice(
-                    base_path,
-                    reference_se,
-                    clone_path,
-                    base_se
+                s3_page_path = default_storage.save(
+                    f"tts_outputs/user_{user_id}/voice_{voice_id}/{user_id}_{voice_id}_page_{page_num}.wav",
+                    File(open(clone_path, "rb"))
                 )
+                tts_urls.append(default_storage.url(s3_page_path))
 
-                # 업로드
-                with open(clone_path, "rb") as f:
-                    s3_path = default_storage.save(
-                        f"tts_outputs/{request.user.id}_page_{page_num}_clone.wav",
-                        File(f)
-                    )
-                    tts_urls.append(default_storage.url(s3_path))
-
-                # 로컬 파일 삭제
                 os.remove(base_path)
                 os.remove(clone_path)
 
+            # -----------------------------
+            # 완료 응답
+            # -----------------------------
             return Response({"tts_audio_urls": tts_urls}, status=200)
 
         except Exception as e:
@@ -546,7 +548,8 @@ class ClonedVoiceTTSView(APIView):
             print("🔥 [TTS ERROR TRACEBACK START]")
             print(traceback.format_exc())
             print("🔥 [TTS ERROR TRACEBACK END]")
-            return Response({"error": str(e)}, status=500)                       
+            return Response({"error": str(e)}, status=500)
+
 
 
 class IllustrationStyleView(APIView):
