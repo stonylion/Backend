@@ -575,7 +575,7 @@ class ClonedVoiceTTSView(APIView):
             import torch
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-            se_path = cloned.se_file
+            se_path = cloned.se_file.name
 
             with default_storage.open(se_path, "rb") as f:
                 reference_se = torch.load(f, map_location=device)
