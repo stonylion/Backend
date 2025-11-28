@@ -27,12 +27,24 @@
 
 <img width="1920" height="1080" alt="14" src="https://github.com/user-attachments/assets/ce8165a6-b518-4e19-bf24-1df4cf4cd865" />
 
+### stony 기획 및 개발
+| 이름     | 역할           | 구현 파트 |
+|----------|----------------|-----------|
+| 이은서   | 기획 · 디자인  | 서비스 기획, GUI 디자인 |
+| 송나영   | 기획 · 디자인  | 서비스 기획, GUI 디자인 |
+| 이예영   | 프론트엔드     | 온보딩, AI 스토리 생성, 결말 확장 |
+| 서예린   | 프론트엔드     | 홈, AI 삽화 생성, 스토리 재생 |
+| 김연우   | 백엔드         | AI 음성 클로닝 & TTS, 아이 분석 리포트, AWS EC2 · Redis · RDS |
+| 신지민   | 백엔드         | 동화 생성, STT 음성 입력, 확장 동화 생성 및 채팅, AWS S3 |
+
 
 ### 배포 URL
 
 https://frontend-puof.vercel.app/
 
-### 기능 구현 분담
+
+
+### Backend 기능 구현 분담
 <a href="https://github.com/2ewyeonwoo3"><img src="https://github.com/2ewyeonwoo3.png" width="40" height="40" /></a>
 2ewyeonwoo3
 <a href="https://github.com/zziminally"><img src="https://github.com/zziminally.png" width="40" height="40" /></a>
