@@ -499,6 +499,11 @@ class StoryGenerateView(APIView):
             custom_theme, _ = MoralTheme.objects.get_or_create(name=kw, defaults={"key": f"custom_{kw}"})
             story.morals.add(custom_theme)
 
+        Library.objects.get_or_create(
+            user=request.user,
+            story=story,
+        )
+
         pages = split_into_pages(body)
 
         for id, page_text in enumerate(pages, start=1):

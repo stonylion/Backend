@@ -28,6 +28,7 @@ import tiktoken
 
 from .models import *
 from .serializers import *
+from mylibrary.models import *
 from story.models import Story, StoryPage, Illustrations
 from story.serializers import *
 from story.utils import split_into_pages
@@ -1282,6 +1283,11 @@ class ExtendStoryCreateView(views.APIView):
             runtime=runtime,
             age_group=age_group,
             illustration_style=request.data.get("illustration_style") or original.illustration_style
+        )
+
+        Library.objects.get_or_create(
+            user=request.user,
+            story=new_story,
         )
 
         pages = split_into_pages(combined_content)
