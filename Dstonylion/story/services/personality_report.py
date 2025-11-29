@@ -31,37 +31,40 @@ NARRATIVE = {
 
 
 def generate_personality_report(result, rationale):
-    lines = []
-    names = {"E": "외향성", "O": "개방성", "A": "친화성", "C": "성실성", "N": "신경증"}
+    """
+    GUI에서 필요로 하는 구조화된 JSON 형태의 리포트 생성
+    (문단 텍스트가 아니라 factor별 verdict + subs 리스트 구조)
+    """
+
+    report = {}
 
     for factor in ["E", "O", "A", "C", "N"]:
         verdict = result[factor]
-        lines.append(f"■ {names[factor]}: {verdict}")
+        subs_raw = rationale[factor]["하위요인_판정"]
 
-        subs = rationale[factor]["하위요인_판정"]
-        valid = [s for s, v in subs.items() if v != "판정유보"]
+        factor_data = {
+            "verdict": verdict,
+            "subs": []
+        }
 
-        if not valid:
-            lines.append(" - 충분한 데이터가 없어 분석이 어렵습니다.\n")
-            continue
+        # 하위요인 리스트 생성
+        for sub_name, sub_verdict in subs_raw.items():
+            narrative = None
 
-        # E/O/A/C는 '높다', N은 '낮다'일 때 정성적 서술 출력
-        if factor in ["E", "O", "A", "C"]:
-            if verdict == "높다":
-                for sub in valid:
-                    if sub in NARRATIVE[factor]:
-                        lines.append(f" - [{sub}] {NARRATIVE[factor][sub]}")
-            else:
-                lines.append(" - 충분한 데이터가 없어 분석이 어렵습니다.")
+            # E/O/A/C → "높다"일 때만 narrative 사용
+            if factor in ["E", "O", "A", "C"] and verdict == "높다" and sub_verdict != "판정유보":
+                narrative = NARRATIVE.get(factor, {}).get(sub_name)
 
-        elif factor == "N":
-            if verdict == "낮다":
-                for sub in valid:
-                    if sub in NARRATIVE[factor]:
-                        lines.append(f" - [{sub}] {NARRATIVE[factor][sub]}")
-            else:
-                lines.append(" - 충분한 데이터가 없어 분석이 어렵습니다.")
+            # N → "낮다"일 때만 narrative 사용
+            if factor == "N" and verdict == "낮다" and sub_verdict != "판정유보":
+                narrative = NARRATIVE.get(factor, {}).get(sub_name)
 
-        lines.append("")
+            factor_data["subs"].append({
+                "name": sub_name,
+                "verdict": sub_verdict,
+                "narrative": narrative  # 판정유보이면 None
+            })
 
-    return "\n".join(lines).strip()
+        report[factor] = factor_data
+
+    return report
