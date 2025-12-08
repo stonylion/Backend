@@ -68,7 +68,7 @@ zziminally
 | ------------------------ | -------------- | -------------------------------------------------------------- | ---------------------------------- |
 | 동화 생성 API   | 2ewyeonwoo3 & zziminally| OpenAI 기반 스토리 생성, 페이지 단위 분리, 동적 스토리 구조화 | OpenAI API, Prompt Engineering, Redis |
 | 삽화 생성 API           | zziminally | 이미지 생성 파이프라인 구축, 페이지별 일러스트 생성 및 결과 저장 | OpenAI Image API, S3       |
-| 음성 클로닝 & TTS       | 2ewyeonwoo3  | 사용자 맞춤 음성 클로닝, 성우 목소리 변환, TTS 변환 처리       | OpenVoice/MeloTTS,  Redis   |
+| 음성 클로닝 & TTS       | 2ewyeonwoo3  | 사용자 맞춤 음성 클로닝, 성우 목소리 변환, TTS 변환 처리       | OpenVoice/MeloTTS,  Redis, S3   |
 | STT 음성 입력        | 	zziminally  | 음성 → 텍스트 변환, Whisper 기반 전처리 및 추론 파이프라인 구성 |    Whisper           |
 | 아이 분석 리포트        | 2ewyeonwoo3  | 아동 언어발화 기반 NDW·언어지표 계산, 성격 분석 모델 적용     | NLP 분석, OpenAI API, Redis        |
 | 확장 동화 생성 및 채팅 | 	zziminally| 챗봇-아동 대화 기반 이어쓰기 스크립트 생성, Dramatica 구조 적용 | OpenAI API, Narrative Engine Logic, Chat Pipeline |
