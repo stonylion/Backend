@@ -1,5 +1,5 @@
 # 📚Stony Web Service - "Backend"
-스토니: 부모의 목소리와 경험담으로 만드는 동화 + 스토리텔링 기반의 육아 콘텐츠 서비스
+stony: 부모의 목소리와 경험담으로 만드는 동화 + 스토리텔링 기반의 육아 콘텐츠 서비스
 
 <img width="1920" height="1080" alt="0" src="https://github.com/user-attachments/assets/85397872-a85c-46c1-b3d7-3c66959833a0" />
 
